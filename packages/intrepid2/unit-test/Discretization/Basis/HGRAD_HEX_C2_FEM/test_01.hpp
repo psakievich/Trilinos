@@ -1,43 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov), or
-//                    Mauro Perego  (mperego@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file test_01.hpp
@@ -55,65 +22,33 @@
 #include "Teuchos_oblackholestream.hpp"
 #include "Teuchos_RCP.hpp"
 
+#include "packages/intrepid2/unit-test/Discretization/Basis/Macros.hpp"
+#include "packages/intrepid2/unit-test/Discretization/Basis/Setup.hpp"
+
 namespace Intrepid2 {
 
   namespace Test {
 
-#define INTREPID2_TEST_ERROR_EXPECTED( S )                              \
-    try {                                                               \
-      ++nthrow;                                                         \
-      S ;                                                               \
-    }                                                                   \
-    catch (std::exception &err) {                                        \
-      ++ncatch;                                                         \
-      *outStream << "Expected Error ----------------------------------------------------------------\n"; \
-      *outStream << err.what() << '\n';                                 \
-      *outStream << "-------------------------------------------------------------------------------" << "\n\n"; \
-    }
-
+    using HostSpaceType = Kokkos::DefaultHostExecutionSpace;
 
     template<bool serendipity, typename ValueType, typename DeviceType>
     int HGRAD_HEX_DEG2_FEM_Test01(const bool verbose) {
 
-      Teuchos::RCP<std::ostream> outStream;
-      Teuchos::oblackholestream bhs; // outputs nothing
+      //! Create an execution space instance.
+      const auto space = Kokkos::Experimental::partition_space(typename DeviceType::execution_space {}, 1)[0];
 
-      if (verbose)
-        outStream = Teuchos::rcp(&std::cout, false);
-      else
-        outStream = Teuchos::rcp(&bhs,       false);
+      //! Setup test output stream.
+      Teuchos::RCP<std::ostream> outStream = setup_output_stream<DeviceType>(
+        verbose, (serendipity) ? "Basis_HGRAD_HEX_I2_Serendipity FEM" : "Basis_HGRAD_HEX_C2_FEM", {
+          "1) Conversion of Dof tags into Dof ordinals and back",
+          "2) Basis values for VALUE, GRAD, and Dk operators"
+      });
 
       Teuchos::oblackholestream oldFormatState;
       oldFormatState.copyfmt(std::cout);
 
-      using DeviceSpaceType = typename DeviceType::execution_space;
-      typedef typename
-        Kokkos::DefaultHostExecutionSpace HostSpaceType ;
-
-      *outStream << "DeviceSpace::  "; DeviceSpaceType().print_configuration(*outStream, false);
-      *outStream << "HostSpace::    ";   HostSpaceType().print_configuration(*outStream, false);
-
-      *outStream
-        << "\n"
-        << "===============================================================================\n"
-        << "|                                                                             |\n";
-      
-      if constexpr (serendipity) 
-        *outStream
-        << "|            Unit Test (Basis_HGRAD_HEX_I2_Serendipity FEM)                   |\n";
-      else 
-        *outStream
-        << "|                 Unit Test (Basis_HGRAD_HEX_C2_FEM)                          |\n";
-      *outStream  
-        << "|                                                                             |\n"
-        << "|     1) Conversion of Dof tags into Dof ordinals and back                    |\n"
-        << "|     2) Basis values for VALUE, GRAD, and Dk operators                       |\n"
-        << "|                                                                             |\n"
-        << "===============================================================================\n";
-
       typedef Kokkos::DynRankView<ValueType,DeviceType> DynRankView;
       typedef Kokkos::DynRankView<ValueType,HostSpaceType>   DynRankViewHost;
-#define ConstructWithLabel(obj, ...) obj(#obj, __VA_ARGS__)
 
       const ValueType tol = tolerence();
       int errorFlag = 0;
@@ -122,8 +57,8 @@ namespace Intrepid2 {
       typedef ValueType outputValueType;
       typedef ValueType pointValueType;
       BasisPtr<DeviceType,outputValueType,pointValueType> hexBasis;
-      if constexpr (serendipity) 
-        hexBasis = Teuchos::rcp(new Basis_HGRAD_HEX_I2_Serendipity_FEM<DeviceType,outputValueType,pointValueType>());
+      if constexpr (serendipity)
+        hexBasis = Teuchos::rcp(new Basis_HGRAD_HEX_I2_FEM<DeviceType,outputValueType,pointValueType>());
       else
         hexBasis = Teuchos::rcp(new Basis_HGRAD_HEX_C2_FEM<DeviceType,outputValueType,pointValueType>());
 
@@ -310,44 +245,6 @@ namespace Intrepid2 {
       outStream -> precision(20);
 
       try{
-        const int numC2Fields = 27;
-        // VALUE: Each row gives the 27 correct basis set values at an evaluation point
-        const ValueType basisValues[] = {
-          1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000, 0, 0, 0, 0, 0, 0, 0, 0, \
-          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1.000  };
-
-
         // GRAD, D1, D2, D3 and D4 test values are stored in files due to their large size
         std::string     fileName;
         std::ifstream   dataFile;
@@ -355,7 +252,7 @@ namespace Intrepid2 {
         // GRAD and D1 values are stored in (F,P,D) format in a data file. Read file and do the test
         std::vector<double> basisGrads;           // Flat array for the gradient values.
 
-        fileName = "./testdata/HEX_C2_GradVals.dat";
+        fileName = serendipity ? "./testdata/HEX_I2_GradVals.dat" : "./testdata/HEX_C2_GradVals.dat";
         dataFile.open(fileName.c_str());
         INTREPID2_TEST_FOR_EXCEPTION( !dataFile.good(), std::logic_error,
                                       ">>> ERROR (HGRAD_HEX_C2/test01): could not open GRAD values data file, test aborted.");
@@ -377,7 +274,7 @@ namespace Intrepid2 {
 
         //D2: flat array with the values of D2 applied to basis functions. Multi-index is (F,P,D2cardinality)
         std::vector<double> basisD2;
-        fileName = "./testdata/HEX_C2_D2Vals.dat";
+        fileName = serendipity ? "./testdata/HEX_I2_D2Vals.dat" : "./testdata/HEX_C2_D2Vals.dat";
         dataFile.open(fileName.c_str());
         INTREPID2_TEST_FOR_EXCEPTION( !dataFile.good(), std::logic_error,
                                       ">>> ERROR (HGRAD_HEX_C2/test01): could not open D2 values data file, test aborted.");
@@ -397,7 +294,7 @@ namespace Intrepid2 {
         //D3: flat array with the values of D3 applied to basis functions. Multi-index is (F,P,D3cardinality)
         std::vector<double> basisD3;
 
-        fileName = "./testdata/HEX_C2_D3Vals.dat";
+        fileName = serendipity ? "./testdata/HEX_I2_D3Vals.dat" : "./testdata/HEX_C2_D3Vals.dat";
         dataFile.open(fileName.c_str());
         INTREPID2_TEST_FOR_EXCEPTION( !dataFile.good(), std::logic_error,
                                       ">>> ERROR (HGRAD_HEX_C2/test01): could not open D3 values data file, test aborted.");
@@ -418,24 +315,28 @@ namespace Intrepid2 {
         //D4: flat array with the values of D3 applied to basis functions. Multi-index is (F,P,D4cardinality)
         std::vector<double> basisD4;
 
-        fileName = "./testdata/HEX_C2_D4Vals.dat";
-        dataFile.open(fileName.c_str());
-        INTREPID2_TEST_FOR_EXCEPTION( !dataFile.good(), std::logic_error,
-                                      ">>> ERROR (HGRAD_HEX_C2/test01): could not open D4 values data file, test aborted.");
+        if constexpr(!serendipity) {
+          fileName = "./testdata/HEX_C2_D4Vals.dat";
+          dataFile.open(fileName.c_str());
+          INTREPID2_TEST_FOR_EXCEPTION( !dataFile.good(), std::logic_error,
+                                        ">>> ERROR (HGRAD_HEX_C2/test01): could not open D4 values data file, test aborted.");
 
-        while (!dataFile.eof() ){
-          double temp;
-          std::string line;                            // string for one line of input file
-          std::getline(dataFile, line);           // get next line from file
-          std::stringstream data_line(line);           // convert to stringstream
-          while(data_line >> temp){               // extract value from line
-            basisD4.push_back(temp);              // push into vector
+          while (!dataFile.eof() ){
+            double temp;
+            std::string line;                            // string for one line of input file
+            std::getline(dataFile, line);           // get next line from file
+            std::stringstream data_line(line);           // convert to stringstream
+            while(data_line >> temp){               // extract value from line
+              basisD4.push_back(temp);              // push into vector
+            }
           }
+          dataFile.close();
+          dataFile.clear();
         }
-        dataFile.close();
-        dataFile.clear();
 
-        DynRankViewHost ConstructWithLabel(hexNodesHost, 27, 3);
+        constexpr ordinal_type numPoints = serendipity ? 20 : 27;
+
+        DynRankViewHost ConstructWithLabel(hexNodesHost, numPoints, 3);
 
         // vertices
         hexNodesHost(0, 0) = -1.0;  hexNodesHost(0, 1) = -1.0;  hexNodesHost(0, 2) = -1.0;
@@ -462,23 +363,24 @@ namespace Intrepid2 {
         hexNodesHost(18,0) =  0.0;   hexNodesHost(18,1) =  1.0;  hexNodesHost(18,2) =  1.0;
         hexNodesHost(19,0) = -1.0;   hexNodesHost(19,1) =  0.0;  hexNodesHost(19,2) =  1.0;
 
-        // center
-        hexNodesHost(20,0) =  0.0;  hexNodesHost(20,1) =  0.0;   hexNodesHost(20,2) =  0.0;
+        if constexpr(!serendipity) {
+          // center
+          hexNodesHost(20,0) =  0.0;  hexNodesHost(20,1) =  0.0;   hexNodesHost(20,2) =  0.0;
 
-        // Face nodes
-        hexNodesHost(21,0) =  0.0;   hexNodesHost(21,1) =  0.0;  hexNodesHost(21,2) = -1.0;
-        hexNodesHost(22,0) =  0.0;   hexNodesHost(22,1) =  0.0;  hexNodesHost(22,2) =  1.0;
-        hexNodesHost(23,0) = -1.0;   hexNodesHost(23,1) =  0.0;  hexNodesHost(23,2) =  0.0;
-        hexNodesHost(24,0) =  1.0;   hexNodesHost(24,1) =  0.0;  hexNodesHost(24,2) =  0.0;
-        hexNodesHost(25,0) =  0.0;   hexNodesHost(25,1) = -1.0;  hexNodesHost(25,2) =  0.0;
-        hexNodesHost(26,0) =  0.0;   hexNodesHost(26,1) =  1.0;  hexNodesHost(26,2) =  0.0;
+          // Face nodes
+          hexNodesHost(21,0) =  0.0;   hexNodesHost(21,1) =  0.0;  hexNodesHost(21,2) = -1.0;
+          hexNodesHost(22,0) =  0.0;   hexNodesHost(22,1) =  0.0;  hexNodesHost(22,2) =  1.0;
+          hexNodesHost(23,0) = -1.0;   hexNodesHost(23,1) =  0.0;  hexNodesHost(23,2) =  0.0;
+          hexNodesHost(24,0) =  1.0;   hexNodesHost(24,1) =  0.0;  hexNodesHost(24,2) =  0.0;
+          hexNodesHost(25,0) =  0.0;   hexNodesHost(25,1) = -1.0;  hexNodesHost(25,2) =  0.0;
+          hexNodesHost(26,0) =  0.0;   hexNodesHost(26,1) =  1.0;  hexNodesHost(26,2) =  0.0;
+        }
 
         auto hexNodes = Kokkos::create_mirror_view(typename DeviceType::memory_space(), hexNodesHost);
         Kokkos::deep_copy(hexNodes, hexNodesHost);
 
         // Dimensions for the output arrays:
         const ordinal_type numFields = hexBasis->getCardinality();
-        const ordinal_type numPoints = hexNodes.extent(0);
         const ordinal_type spaceDim  = hexBasis->getBaseCellTopology().getDimension();
         const ordinal_type D2Cardin  = getDkCardinality(OPERATOR_D2, spaceDim);
         const ordinal_type D3Cardin  = getDkCardinality(OPERATOR_D3, spaceDim);
@@ -488,13 +390,13 @@ namespace Intrepid2 {
           // Generic array for values, grads, curls, etc. that will be properly sized before each call
           DynRankView ConstructWithLabel(vals, numFields, numPoints);
           // Check VALUE of basis functions: resize vals to rank-2 container:
-          hexBasis->getValues(vals, hexNodes, OPERATOR_VALUE);
+          hexBasis->getValues(space, vals, hexNodes, OPERATOR_VALUE);
           auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
           Kokkos::deep_copy(vals_host, vals);
           for (ordinal_type i = 0; i < numFields; ++i) {
             for (ordinal_type j = 0; j < numPoints; ++j) {
-              const ordinal_type l =  i + j * numC2Fields;
-              if (std::abs(vals_host(i,j) - basisValues[l]) > tol ) {
+              ValueType basisVal = (i==j) ? 1.0 : 0.0;  //Kronecher property
+              if (std::abs(vals_host(i,j) - basisVal) > tol ) {
                 errorFlag++;
                 *outStream << std::setw(70) << "^^^^----FAILURE!" << "\n";
 
@@ -502,7 +404,7 @@ namespace Intrepid2 {
                 *outStream << " At multi-index { ";
                 *outStream << i << " ";*outStream << j << " ";
                 *outStream << "}  computed value: " << vals_host(i,j)
-                           << " but reference value: " << basisValues[l] << "\n";
+                           << " but reference value: " << basisVal << "\n";
               }
             }
           }
@@ -511,7 +413,7 @@ namespace Intrepid2 {
         {
           DynRankView ConstructWithLabel(vals, numFields, numPoints, spaceDim);
           // Check GRAD of basis function: resize vals to rank-3 container
-          hexBasis->getValues(vals, hexNodes, OPERATOR_GRAD);
+          hexBasis->getValues(space, vals, hexNodes, OPERATOR_GRAD);
           auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
           Kokkos::deep_copy(vals_host, vals);
           for (ordinal_type i = 0; i < numFields; ++i) {
@@ -535,7 +437,7 @@ namespace Intrepid2 {
           }
 
           // Check D1 of basis function (do not resize vals because it has the correct size: D1 = GRAD)
-          hexBasis->getValues(vals, hexNodes, OPERATOR_D1);
+          hexBasis->getValues(space, vals, hexNodes, OPERATOR_D1);
           Kokkos::deep_copy(vals_host, vals);
           for (ordinal_type i = 0; i < numFields; ++i) {
             for (ordinal_type j = 0; j < numPoints; ++j) {
@@ -561,7 +463,7 @@ namespace Intrepid2 {
         {
           // Check D2 of basis function
           DynRankView ConstructWithLabel(vals, numFields, numPoints, D2Cardin);
-          hexBasis->getValues(vals, hexNodes, OPERATOR_D2);
+          hexBasis->getValues(space, vals, hexNodes, OPERATOR_D2);
           auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
           Kokkos::deep_copy(vals_host, vals);
           for (ordinal_type i = 0; i < numFields; ++i) {
@@ -588,7 +490,7 @@ namespace Intrepid2 {
         {
           // Check D3 of basis function
           DynRankView ConstructWithLabel(vals, numFields, numPoints, D3Cardin);
-          hexBasis->getValues(vals, hexNodes, OPERATOR_D3);
+          hexBasis->getValues(space, vals, hexNodes, OPERATOR_D3);
           auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
           Kokkos::deep_copy(vals_host, vals);
           for (ordinal_type i = 0; i < numFields; ++i) {
@@ -614,25 +516,27 @@ namespace Intrepid2 {
 
         {
           // Check D4 of basis function
-          DynRankView ConstructWithLabel(vals, numFields, numPoints, D4Cardin);
-          hexBasis->getValues(vals, hexNodes, OPERATOR_D4);
-          auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
-          Kokkos::deep_copy(vals_host, vals);
-          for (ordinal_type i = 0; i < numFields; i++) {
-            for (ordinal_type j = 0; j < numPoints; j++) {
-              for (ordinal_type k = 0; k < D4Cardin; k++) {
+          if(!serendipity) { //don't have tabulated values for D4 for serendipity elements
+            DynRankView ConstructWithLabel(vals, numFields, numPoints, D4Cardin);
+            hexBasis->getValues(space, vals, hexNodes, OPERATOR_D4);
+            auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
+            Kokkos::deep_copy(vals_host, vals);
+            for (ordinal_type i = 0; i < numFields; i++) {
+              for (ordinal_type j = 0; j < numPoints; j++) {
+                for (ordinal_type k = 0; k < D4Cardin; k++) {
 
-                // basisD4 is (F,P,Dk), compute offset:
-                int l = k + j * D4Cardin + i * D4Cardin * numPoints;
-                if (std::abs(vals_host(i,j,k) - basisD4[l]) > tol) {
-                  errorFlag++;
-                  *outStream << std::setw(70) << "^^^^----FAILURE!" << "\n";
+                  // basisD4 is (F,P,Dk), compute offset:
+                  int l = k + j * D4Cardin + i * D4Cardin * numPoints;
+                  if (std::abs(vals_host(i,j,k) - basisD4[l]) > tol) {
+                    errorFlag++;
+                    *outStream << std::setw(70) << "^^^^----FAILURE!" << "\n";
 
-                  // Output the multi-index of the value where the error is:
-                  *outStream << " At multi-index { ";
-                  *outStream << i << " ";*outStream << j << " ";*outStream << k << " ";
-                  *outStream << "}  computed D4 component: " << vals_host(i,j,k)
-                             << " but reference D4 component: " << basisD2[l] << "\n"; //D2 same as D4?
+                    // Output the multi-index of the value where the error is:
+                    *outStream << " At multi-index { ";
+                    *outStream << i << " ";*outStream << j << " ";*outStream << k << " ";
+                    *outStream << "}  computed D4 component: " << vals_host(i,j,k)
+                              << " but reference D4 component: " << basisD4[l] << "\n";
+                  }
                 }
               }
             }
@@ -652,7 +556,7 @@ namespace Intrepid2 {
             // The last dimension is the number of kth derivatives and needs to be resized for every Dk
             const ordinal_type DkCardin  = getDkCardinality(op, spaceDim);
             DynRankView ConstructWithLabel(vals, numFields, numPoints, DkCardin);
-            hexBasis->getValues(vals, hexNodes, op);
+            hexBasis->getValues(space, vals, hexNodes, op);
             auto vals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), vals);
             Kokkos::deep_copy(vals_host, vals);
 
@@ -715,7 +619,7 @@ namespace Intrepid2 {
 
         // Check mathematical correctness.
         hexBasis->getDofCoords(cvals);
-        hexBasis->getValues(bvals, cvals, OPERATOR_VALUE);
+        hexBasis->getValues(space, bvals, cvals, OPERATOR_VALUE);
         auto cvals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), cvals);
         Kokkos::deep_copy(cvals_host, cvals);
         auto bvals_host = Kokkos::create_mirror_view(typename HostSpaceType::memory_space(), bvals);
@@ -747,14 +651,14 @@ namespace Intrepid2 {
       << "===============================================================================\n"
       << "| TEST 5: Function Space is Correct                                           |\n"
       << "===============================================================================\n";
-      
+
       try {
         const EFunctionSpace fs = hexBasis->getFunctionSpace();
-        
+
         if (fs != FUNCTION_SPACE_HGRAD)
         {
           *outStream << std::setw(70) << "------------- TEST FAILURE! -------------" << "\n";
-          
+
           // Output the multi-index of the value where the error is:
           *outStream << " Expected a function space of FUNCTION_SPACE_HGRAD (enum value " << FUNCTION_SPACE_HGRAD << "),";
           *outStream << " but got " << fs << "\n";
@@ -770,7 +674,7 @@ namespace Intrepid2 {
         *outStream << "-------------------------------------------------------------------------------" << "\n\n";
         errorFlag = -1000;
       }
-      
+
       if (errorFlag != 0)
         std::cout << "End Result: TEST FAILED\n";
       else

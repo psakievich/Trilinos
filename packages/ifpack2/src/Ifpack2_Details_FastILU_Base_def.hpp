@@ -1,44 +1,11 @@
-/*@HEADER
-// ***********************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //       Ifpack2: Templated Object-Oriented Algebraic Preconditioner Package
-//                 Copyright (2009) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//@HEADER
-*/
+// Copyright 2009 NTESS and the Ifpack2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 /// @file Ifpack2_Details_FastILU_Base_def.hpp
 
@@ -179,23 +146,26 @@ initialize()
     throw std::runtime_error(std::string("Called ") + getName() + "::initialize() but matrix was null (call setMatrix() with a non-null matrix first)");
   }
 
+  if (isBlockCrs()) {
+    auto crs_matrix = Ifpack2::Details::getCrsMatrix(this->mat_);
+
+    if (params_.fillBlocks) {
+      // Create new TCrsMatrix with the new filled data and conver to Bcrs
+      auto crs_matrix_block_filled = Tpetra::fillLogicalBlocks(*crs_matrix, params_.blockCrsSize);
+      auto bcrs_matrix = Tpetra::convertToBlockCrsMatrix(*crs_matrix_block_filled, params_.blockCrsSize);
+      mat_ = bcrs_matrix;
+    }
+    else {
+      // Assume input is already filled, just convert to Bcrs
+      auto bcrs_matrix = Tpetra::convertToBlockCrsMatrix(*crs_matrix, params_.blockCrsSize);
+      mat_ = bcrs_matrix;
+    }
+  }
+
   Kokkos::Timer copyTimer;
   CrsArrayReader<Scalar, ImplScalar, LocalOrdinal, GlobalOrdinal, Node>::getStructure(mat_.get(), localRowPtrsHost_, localRowPtrs_, localColInds_);
   CrsArrayReader<Scalar, ImplScalar, LocalOrdinal, GlobalOrdinal, Node>::getValues(mat_.get(), localValues_, localRowPtrsHost_);
   crsCopyTime_ = copyTimer.seconds();
-
-  if (isBlockCrs()) {
-    // Create new TCrsMatrix with the new filled data
-    auto crs_matrix = Ifpack2::Details::getCrsMatrix(this->mat_);
-    auto crs_matrix_block_filled = Tpetra::fillLogicalBlocks(*crs_matrix, params_.blockCrsSize);
-
-    // Convert to block crs matrix
-    auto bcrs_matrix = Tpetra::convertToBlockCrsMatrix(*crs_matrix_block_filled, params_.blockCrsSize);
-    mat_ = bcrs_matrix;
-
-    CrsArrayReader<Scalar, ImplScalar, LocalOrdinal, GlobalOrdinal, Node>::getStructure(mat_.get(), localRowPtrsHost_, localRowPtrs_, localColInds_);
-    CrsArrayReader<Scalar, ImplScalar, LocalOrdinal, GlobalOrdinal, Node>::getValues(mat_.get(), localValues_, localRowPtrsHost_);
-  }
 
   if (params_.use_metis)
   {
@@ -448,6 +418,7 @@ Params::getDefaults()
   p.blockSize = 1;      // # of rows / thread, for SpTRSV
   p.blockCrs = false;   // whether to use block CRS for fastILU
   p.blockCrsSize = 1;   // block size for block CRS
+  p.fillBlocks = false; // whether input matrix needs to be filled
   return p;
 }
 
@@ -583,6 +554,15 @@ Params::Params(const Teuchos::ParameterList& pL, std::string precType)
     else
       TYPE_ERROR("block crs block size", "int");
   }
+  //"fill blocks for input" aka fillBlocks
+  if(pL.isParameter("fill blocks for input"))
+  {
+    if(pL.isType<bool>("fill blocks for input"))
+      blockCrsSize = pL.get<bool>("fill blocks for input");
+    else
+      TYPE_ERROR("fill blocks for input", "bool");
+  }
+
   #undef CHECK_VALUE
   #undef TYPE_ERROR
 }

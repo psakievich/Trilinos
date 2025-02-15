@@ -1,4 +1,4 @@
-C Copyright(C) 1999-2020 National Technology & Engineering Solutions
+C Copyright(C) 1999-2020, 2024 National Technology & Engineering Solutions
 C of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 C NTESS, the U.S. Government retains certain rights in this software.
 C
@@ -52,19 +52,7 @@ C   --                                   6 - magenta
       PARAMETER (KWIDLN=2)
 
       include 'dbnums.blk'
-
-      COMMON /LINTHC/ MSHBND, BLKBND, ELEBND, THKNSS
-      REAL MSHBND, BLKBND, ELEBND
-C      --      Line thickness specification for lines appearing
-C      --      on mesh plots.  Specification is a real value in the
-C      --      range 0. - 1000., with 0. being the thinest line and
-C      --      1000. being the thickest.
-C      -- MSHBND - Thickness of lines forming the mesh boundary.
-C      -- BLKBND - Thickness of lines forming element block boundaries.
-C      -- ELEBND - Thickness of lines forming element boundaries.
-      REAL THKNSS(3)
-C     --       Line thickness specifications for THICK, MEDIUM,
-C     --       and THIN keywords.
+      include 'linthc.blk'
 
       CHARACTER*(*) FNCT
       INTEGER MLNTYP(-1:1)

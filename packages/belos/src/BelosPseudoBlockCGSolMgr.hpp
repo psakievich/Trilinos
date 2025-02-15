@@ -1,43 +1,11 @@
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //                 Belos: Block Linear Solvers Package
-//                  Copyright 2004 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ************************************************************************
-//@HEADER
+// Copyright 2004-2016 NTESS and the Belos contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef BELOS_PSEUDO_BLOCK_CG_SOLMGR_HPP
 #define BELOS_PSEUDO_BLOCK_CG_SOLMGR_HPP
@@ -46,6 +14,7 @@
  *  \brief The Belos::PseudoBlockCGSolMgr provides a solver manager for the BlockCG linear solver.
 */
 
+#include "BelosCGIteration.hpp"
 #include "BelosConfigDefs.hpp"
 #include "BelosTypes.hpp"
 
@@ -53,7 +22,6 @@
 #include "BelosSolverManager.hpp"
 
 #include "BelosPseudoBlockCGIter.hpp"
-#include "BelosCGSingleRedIter.hpp"
 #include "BelosCGIter.hpp"
 #include "BelosStatusTestMaxIters.hpp"
 #include "BelosStatusTestGenResNorm.hpp"
@@ -65,10 +33,13 @@
 #include "Teuchos_TimeMonitor.hpp"
 #endif
 
-/** \example BlockCG/PseudoBlockCGEpetraExFile.cpp
-    This is an example of how to use the Belos::PseudoBlockCGSolMgr solver manager.
+/** \example epetra/example/BlockCG/PseudoBlockCGEpetraExFile.cpp
+    This is an example of how to use the Belos::PseudoBlockCGSolMgr solver manager using Epetra.
 */
-/** \example BlockCG/PseudoBlockPrecCGEpetraExFile.cpp
+/** \example tpetra/example/BlockCG/PseudoBlockCGTpetraExFile.cpp
+    This is an example of how to use the Belos::PseudoBlockCGSolMgr solver manager using Tpetra.
+*/
+/** \example epetra/example/BlockCG/PseudoBlockPrecCGEpetraExFile.cpp
     This is an example of how to use the Belos::PseudoBlockCGSolMgr solver manager with an Ifpack preconditioner.
 */
 
@@ -108,8 +79,7 @@ namespace Belos {
   {
     static const bool scalarTypeIsSupported =
       Belos::Details::LapackSupportsScalar<ScalarType>::value;
-    typedef Details::SolverManagerRequiresLapack<ScalarType, MV, OP,
-                                                 scalarTypeIsSupported> base_type;
+    using base_type = Details::SolverManagerRequiresLapack<ScalarType, MV, OP, scalarTypeIsSupported>;
 
   public:
     PseudoBlockCGSolMgr () :
@@ -119,7 +89,7 @@ namespace Belos {
                          const Teuchos::RCP<Teuchos::ParameterList> &pl) :
       base_type ()
     {}
-    virtual ~PseudoBlockCGSolMgr () {}
+    virtual ~PseudoBlockCGSolMgr () = default;
 
     Teuchos::RCP<StatusTestGenResNorm<ScalarType,MV,OP> >
     getResidualStatusTest() const { return Teuchos::null; }
@@ -131,11 +101,11 @@ namespace Belos {
     public Details::SolverManagerRequiresLapack<ScalarType, MV, OP, true>
   {
   private:
-    typedef MultiVecTraits<ScalarType,MV> MVT;
-    typedef OperatorTraits<ScalarType,MV,OP> OPT;
-    typedef Teuchos::ScalarTraits<ScalarType> SCT;
-    typedef typename Teuchos::ScalarTraits<ScalarType>::magnitudeType MagnitudeType;
-    typedef Teuchos::ScalarTraits<MagnitudeType> MT;
+    using MVT = MultiVecTraits<ScalarType, MV>;
+    using OPT = OperatorTraits<ScalarType, MV, OP>;
+    using SCT = Teuchos::ScalarTraits<ScalarType>;
+    using MagnitudeType = typename Teuchos::ScalarTraits<ScalarType>::magnitudeType;
+    using MT = Teuchos::ScalarTraits<MagnitudeType>;
 
   public:
 
@@ -168,7 +138,7 @@ namespace Belos {
                          const Teuchos::RCP<Teuchos::ParameterList> &pl );
 
     //! Destructor.
-    virtual ~PseudoBlockCGSolMgr() {};
+    virtual ~PseudoBlockCGSolMgr() = default;
 
     //! clone for Inverted Injection (DII)
     Teuchos::RCP<SolverManager<ScalarType, MV, OP> > clone () const override {
@@ -343,6 +313,8 @@ namespace Belos {
     bool genCondEst_;
     ScalarType condEstimate_;
     Teuchos::ArrayRCP<MagnitudeType> eigenEstimates_;
+
+    Teuchos::RCP<CGIterationStateBase<ScalarType, MV> > state_;
 
     // Timers.
     std::string label_;
@@ -552,8 +524,8 @@ setParameters (const Teuchos::RCP<Teuchos::ParameterList>& params)
   }
 
   // Convergence
-  typedef Belos::StatusTestCombo<ScalarType,MV,OP> StatusTestCombo_t;
-  typedef Belos::StatusTestGenResNorm<ScalarType,MV,OP> StatusTestResNorm_t;
+  using StatusTestCombo_t = Belos::StatusTestCombo<ScalarType, MV, OP>;
+  using StatusTestResNorm_t = Belos::StatusTestGenResNorm<ScalarType, MV, OP>;
 
   // Check for convergence tolerance
   if (params->isParameter ("Convergence Tolerance")) {
@@ -790,9 +762,13 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
               foldConvergenceDetectionIntoAllreduce_);
     block_cg_iter =
       Teuchos::rcp (new CGIter<ScalarType,MV,OP> (problem_, printer_, outputTest_, convTest_, plist));
+    if (state_.is_null() || Teuchos::rcp_dynamic_cast<CGIterationState<ScalarType, MV> >(state_).is_null())
+      state_ = Teuchos::rcp(new CGIterationState<ScalarType, MV>());
   } else {
     block_cg_iter =
       Teuchos::rcp (new PseudoBlockCGIter<ScalarType,MV,OP> (problem_, printer_, outputTest_, plist));
+    if (state_.is_null() || Teuchos::rcp_dynamic_cast<PseudoBlockCGIterationState<ScalarType, MV> >(state_).is_null())
+      state_ = Teuchos::rcp(new PseudoBlockCGIterationState<ScalarType, MV>());
   }
 
   // Setup condition estimate
@@ -822,11 +798,9 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
       Teuchos::RCP<MV> R_0 = MVT::CloneViewNonConst( *(Teuchos::rcp_const_cast<MV>(problem_->getInitResVec())), currIdx );
 
       // Get a new state struct and initialize the solver.
-      CGIterationState<ScalarType,MV> newState;
-      newState.R = R_0;
-      block_cg_iter->initializeCG(newState);
+      block_cg_iter->initializeCG(state_, R_0);
 
-      while(1) {
+      while(true) {
 
         // tell block_gmres_iter to iterate
         try {
@@ -842,7 +816,7 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
 
             // Figure out which linear systems converged.
             std::vector<int> convIdx = Teuchos::rcp_dynamic_cast<StatusTestGenResNorm<ScalarType,MV,OP> >(convTest_)->convIndices();
- 
+
             // If the number of converged linear systems is equal to the
             // number of current linear systems, then we are done with this block.
             if (convIdx.size() == currRHSIdx.size())
@@ -879,7 +853,7 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
               compute_condnum_tridiag_sym(diag,offdiag,eigenEstimates_,l_min,l_max,condEstimate_);
 
               // Make sure not to do more condition estimate computations for this solve.
-              block_cg_iter->setDoCondEst(false); 
+              block_cg_iter->setDoCondEst(false);
               condEstPerf = true;
             }
 
@@ -892,9 +866,7 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
             for (int i=0; i<have; ++i) { currIdx2[i] = i; }
 
             // Set the new state and initialize the solver.
-            CGIterationState<ScalarType,MV> defstate;
-            defstate.R = R_0;
-            block_cg_iter->initializeCG(defstate);
+            block_cg_iter->initializeCG(state_, R_0);
           }
 
           ////////////////////////////////////////////////////////////////////////////////////
@@ -919,6 +891,15 @@ ReturnType PseudoBlockCGSolMgr<ScalarType,MV,OP,true>::solve ()
             TEUCHOS_TEST_FOR_EXCEPTION(true,std::logic_error,
                                "Belos::PseudoBlockCGSolMgr::solve(): Invalid return from PseudoBlockCGIter::iterate().");
           }
+        }
+        catch (const StatusTestNaNError& e) {
+          // A NaN was detected in the solver.  Set the solution to zero and return unconverged.
+          achievedTol_ = MT::one();
+          Teuchos::RCP<MV> X = problem_->getLHS();
+          MVT::MvInit( *X, SCT::zero() );
+          printer_->stream(Warnings) << "Belos::PseudoBlockCGSolMgr::solve(): Warning! NaN has been detected!"
+                                     << std::endl;
+          return Unconverged;
         }
         catch (const std::exception &e) {
           printer_->stream(Errors) << "Error! Caught std::exception in PseudoBlockCGIter::iterate() at iteration "
@@ -1013,7 +994,7 @@ compute_condnum_tridiag_sym (Teuchos::ArrayView<MagnitudeType> diag,
                              ScalarType & lambda_max,
                              ScalarType & ConditionNumber )
 {
-  typedef Teuchos::ScalarTraits<ScalarType> STS;
+  using STS = Teuchos::ScalarTraits<ScalarType>;
 
   /* Copied from az_cg.c: compute_condnum_tridiag_sym */
   /* diag ==      ScalarType vector of size N, containing the diagonal

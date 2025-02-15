@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -33,7 +33,7 @@ namespace {
 
   template <typename INT>
   int find_adjacency(Problem_Description * /*problem*/, Mesh_Description<INT> * /*mesh*/,
-                     Graph_Description<INT> * /*graph*/, Weight_Description<INT> * /*weight*/,
+                     Graph_Description<INT> * /*graph*/, Weight_Description * /*weight*/,
                      Sphere_Info * /*sphere*/);
 } // namespace
 /*****************************************************************************/
@@ -44,17 +44,16 @@ namespace {
  * This function does the work to generate the graph from the FE mesh.
  *****************************************************************************/
 template int generate_graph(Problem_Description *problem, Mesh_Description<int> *mesh,
-                            Graph_Description<int> *graph, Weight_Description<int> *weight,
+                            Graph_Description<int> *graph, Weight_Description *weight,
                             Sphere_Info *sphere);
 
 template int generate_graph(Problem_Description *problem, Mesh_Description<int64_t> *mesh,
-                            Graph_Description<int64_t> *graph, Weight_Description<int64_t> *weight,
+                            Graph_Description<int64_t> *graph, Weight_Description *weight,
                             Sphere_Info *sphere);
 
 template <typename INT>
 int generate_graph(Problem_Description *problem, Mesh_Description<INT> *mesh,
-                   Graph_Description<INT> *graph, Weight_Description<INT> *weight,
-                   Sphere_Info *sphere)
+                   Graph_Description<INT> *graph, Weight_Description *weight, Sphere_Info *sphere)
 {
   double time1 = get_time();
   /* Find the elements surrounding a node */
@@ -98,7 +97,7 @@ namespace {
     // The hope is that this code will speed up the entire routine even
     // though we are iterating the complete connectivity array twice.
     for (size_t ecnt = 0; ecnt < mesh->num_elems; ecnt++) {
-      int nnodes = get_elem_info(NNODES, mesh->elem_type[ecnt]);
+      int nnodes = get_elem_info(ElementInfo::NNODES, mesh->elem_type[ecnt]);
       for (int ncnt = 0; ncnt < nnodes; ncnt++) {
         INT node = mesh->connect[ecnt][ncnt];
         assert(node < (INT)mesh->num_nodes);
@@ -146,7 +145,7 @@ namespace {
 
     /* Find the surrounding elements for each node in the mesh */
     for (size_t ecnt = 0; ecnt < mesh->num_elems; ecnt++) {
-      int nnodes = get_elem_info(NNODES, mesh->elem_type[ecnt]);
+      int nnodes = get_elem_info(ElementInfo::NNODES, mesh->elem_type[ecnt]);
       for (int ncnt = 0; ncnt < nnodes; ncnt++) {
         INT node = mesh->connect[ecnt][ncnt];
 
@@ -180,8 +179,7 @@ namespace {
    *****************************************************************************/
   template <typename INT>
   int find_adjacency(Problem_Description *problem, Mesh_Description<INT> *mesh,
-                     Graph_Description<INT> *graph, Weight_Description<INT> *weight,
-                     Sphere_Info *sphere)
+                     Graph_Description<INT> *graph, Weight_Description *weight, Sphere_Info *sphere)
   {
     std::vector<INT> pt_list;
     std::vector<INT> hold_elem;
@@ -205,14 +203,14 @@ namespace {
     }
 
     /* Find the adjacency for a nodal based decomposition */
-    if (problem->type == NODAL) {
+    if (problem->type == DecompType::NODAL) {
       graph->nadj = 0;
       for (size_t ncnt = 0; ncnt < mesh->num_nodes; ncnt++) {
         graph->start[ncnt] = graph->nadj;
         assert(graph->nadj == graph->adj.size());
         for (size_t ecnt = 0; ecnt < graph->sur_elem[ncnt].size(); ecnt++) {
           size_t elem   = graph->sur_elem[ncnt][ecnt];
-          int    nnodes = get_elem_info(NNODES, mesh->elem_type[elem]);
+          int    nnodes = get_elem_info(ElementInfo::NNODES, mesh->elem_type[elem]);
           for (int i = 0; i < nnodes; i++) {
             INT entry = mesh->connect[elem][i];
 
@@ -223,7 +221,7 @@ namespace {
             }
           }
         } /* End "for(ecnt=0; ecnt < graph->nsur_elem[ncnt]; ecnt++)" */
-      }   /* End "for(ncnt=0; ncnt < mesh->num_nodes; ncnt++)" */
+      } /* End "for(ncnt=0; ncnt < mesh->num_nodes; ncnt++)" */
     }
     /* Find the adjacency for a elemental based decomposition */
     else {
@@ -247,18 +245,18 @@ namespace {
       int nsides     = 0;
 
       for (size_t ecnt = 0; ecnt < mesh->num_elems; ecnt++) {
-        E_Type etype      = mesh->elem_type[ecnt];
-        E_Type etype_last = NULL_EL;
+        ElementType etype      = mesh->elem_type[ecnt];
+        ElementType etype_last = ElementType::NULL_EL;
         if (etype != etype_last) {
           etype_last = etype;
           element_3d = is_3d_element(mesh->elem_type[ecnt]);
           if (problem->face_adj == 0) {
-            nnodes = get_elem_info(NNODES, etype);
+            nnodes = get_elem_info(ElementInfo::NNODES, etype);
           }
-          nsides = get_elem_info(NSIDES, etype);
+          nsides = get_elem_info(ElementInfo::NSIDES, etype);
         }
 
-        if (etype != SPHERE || problem->no_sph == 1) {
+        if (etype != ElementType::SPHERE || problem->no_sph == 1) {
           graph->start[cnt] = graph->nadj;
           assert(graph->nadj == graph->adj.size());
 
@@ -289,7 +287,7 @@ namespace {
 
                 /* make sure we're not checking if the element
                    is connected to itself */
-                if (ecnt != (size_t)entry && mesh->elem_type[entry] != SPHERE) {
+                if (ecnt != (size_t)entry && mesh->elem_type[entry] != ElementType::SPHERE) {
                   /* If tmp_element[entry] != ecnt, then entry is not in list... */
                   if ((size_t)tmp_element[entry] != ecnt) {
 #if 0
@@ -299,11 +297,11 @@ namespace {
                     tmp_element[entry] = ecnt;
                     (graph->nadj)++;
                     graph->adj.push_back(entry);
-                    if (weight->type & EDGE_WGT) {
+                    if (weight->type & WeightingOptions::EDGE_WGT) {
                       weight->edges.push_back(1.0);
                     }
                   }
-                  else if (weight->type & EDGE_WGT) {
+                  else if (weight->type & WeightingOptions::EDGE_WGT) {
                     int iret = in_list(entry, (graph->nadj) - (graph->start[cnt]),
                                        &graph->adj[graph->start[cnt]]);
                     assert(iret >= 0);
@@ -312,7 +310,7 @@ namespace {
                 }
               }
             } /* End "for(ncnt=0; ...)" */
-          }   /* End: "if (problem->face_adj == 0)" */
+          } /* End: "if (problem->face_adj == 0)" */
 
           /* So if this is a 3-d element and we're forcing face
            * adjacency, if it gets to this else below
@@ -396,9 +394,9 @@ namespace {
                   }
 
                   for (int ncnt = 0; ncnt < nnodes; ncnt++) {
-                    nelem = find_inter(
-                        hold_elem.data(), &graph->sur_elem[side_nodes[(ncnt + 1)]][0], nhold,
-                        graph->sur_elem[side_nodes[(ncnt + 1)]].size(), pt_list.data());
+                    nelem = find_inter(Data(hold_elem), &graph->sur_elem[side_nodes[(ncnt + 1)]][0],
+                                       nhold, graph->sur_elem[side_nodes[(ncnt + 1)]].size(),
+                                       Data(pt_list));
 
                     /*  If less than 2 ( 0 or 1 ) elements only
                         touch nodes 0 and ncnt+1 then try next side node, i.e.,
@@ -433,7 +431,7 @@ namespace {
                         find_inter(&graph->sur_elem[side_nodes[inode]][0],
                                    &graph->sur_elem[side_nodes[(ncnt + 2)]][0],
                                    graph->sur_elem[side_nodes[inode]].size(),
-                                   graph->sur_elem[side_nodes[(ncnt + 2)]].size(), pt_list.data());
+                                   graph->sur_elem[side_nodes[(ncnt + 2)]].size(), Data(pt_list));
 
                     /*
                      * If there are multiple elements in the intersection, then
@@ -482,7 +480,7 @@ namespace {
                        * is connected to only an edge of a quad/tet
                        */
 
-                      E_Type etype2 = mesh->elem_type[entry];
+                      ElementType etype2 = mesh->elem_type[entry];
 
                       /* make sure this is a 3d element*/
 
@@ -528,7 +526,7 @@ namespace {
                           /* if this element 1 is a hexshell, then only
                              require 4 of the 6 nodes to match between elements
                              1 and 2 */
-                          if (etype == HEXSHELL && side_cnt == 6) {
+                          if (etype == ElementType::HEXSHELL && side_cnt == 6) {
                             side_cnt = 4;
                           }
 
@@ -556,7 +554,7 @@ namespace {
                         if (sid > 0) {
                           (graph->nadj)++;
                           graph->adj.push_back(entry);
-                          if (weight->type & EDGE_WGT) {
+                          if (weight->type & WeightingOptions::EDGE_WGT) {
                             /*
                              * the edge weight is the number of nodes in the
                              * connecting face
@@ -583,7 +581,7 @@ namespace {
                           Gen_Error(0, cmesg);
                           cmesg = fmt::format("Element 1: {}", (ecnt + 1));
                           Gen_Error(0, cmesg);
-                          nnodes = get_elem_info(NNODES, etype);
+                          nnodes = get_elem_info(ElementInfo::NNODES, etype);
                           cmesg  = "connect table:";
                           for (int ii = 0; ii < nnodes; ii++) {
                             tmpstr = fmt::format(" {}", (size_t)(mesh->connect[ecnt][ii] + 1));
@@ -600,7 +598,7 @@ namespace {
                           Gen_Error(0, cmesg);
                           cmesg = fmt::format("Element 2: {}", (entry + 1));
                           Gen_Error(0, cmesg);
-                          nnodes = get_elem_info(NNODES, etype2);
+                          nnodes = get_elem_info(ElementInfo::NNODES, etype2);
                           cmesg  = "connect table:";
                           for (int ii = 0; ii < nnodes; ii++) {
                             tmpstr = fmt::format(" {}", (size_t)(mesh->connect[entry][ii] + 1));
@@ -610,12 +608,12 @@ namespace {
                           count++;
                           fmt::print("Now we have {} bad element connections.\n", count);
                         } /* End "if (sid > 0)" */
-                      }   /* End: "if(ecnt != entry)" */
+                      } /* End: "if(ecnt != entry)" */
                     }
                   } /* End: "for(i=0; i < nelem; i++)" */
-                }   /* End: "if (nelem > 1)" */
-              }     /* End: "for (nscnt = 0; nscnt < nsides; nscnt++)" */
-            }       /* End: "if(element_3d)" */
+                } /* End: "if (nelem > 1)" */
+              } /* End: "for (nscnt = 0; nscnt < nsides; nscnt++)" */
+            } /* End: "if(element_3d)" */
 
             else {
 
@@ -623,7 +621,7 @@ namespace {
                * 1d or 2d elements
                */
 
-              nnodes = get_elem_info(NNODES, mesh->elem_type[ecnt]);
+              nnodes = get_elem_info(ElementInfo::NNODES, mesh->elem_type[ecnt]);
 
               for (int ncnt = 0; ncnt < nnodes; ncnt++) {
                 /* node is the node number 'ncnt' of element 'ecnt' */
@@ -648,24 +646,24 @@ namespace {
 
                         (graph->nadj)++;
                         graph->adj.push_back(entry);
-                        if (weight->type & EDGE_WGT) {
+                        if (weight->type & WeightingOptions::EDGE_WGT) {
                           weight->edges.push_back(1.0);
                         }
                       }
-                      else if (weight->type & EDGE_WGT) {
+                      else if (weight->type & WeightingOptions::EDGE_WGT) {
                         weight->edges[iret + (graph->start[cnt])] += 1.0F;
                       }
                     }
                   } /* End: if(ecnt != entry) */
-                }   /* for(i=0; i < graph->nsur_elem[node]; i++) */
-              }     /* End "for(ncnt=0; ...)" */
-            }       /* End: "else" (if !element_3d) */
-          }         /* End: "else" (if face_adj != 0) */
+                } /* for(i=0; i < graph->nsur_elem[node]; i++) */
+              } /* End "for(ncnt=0; ...)" */
+            } /* End: "else" (if !element_3d) */
+          } /* End: "else" (if face_adj != 0) */
 
           cnt++;
 
         } /* End "if(etype != SPHERE)" */
-      }   /* End "for(ecnt=0; ecnt < mesh->num_elems; ecnt++)" */
+      } /* End "for(ecnt=0; ecnt < mesh->num_elems; ecnt++)" */
     }
 
     graph->start[problem->num_vertices] = graph->adj.size();
@@ -682,7 +680,7 @@ namespace {
     }
 
     /* Adjust for a mesh with spheres */
-    if (problem->type == ELEMENTAL && sphere->num) {
+    if (problem->type == DecompType::ELEMENTAL && sphere->num) {
       /* Decrement adjacency entries */
       for (auto &elem : graph->adj) {
         for (size_t ecnt = 0; ecnt < mesh->num_el_blks; ecnt++) {

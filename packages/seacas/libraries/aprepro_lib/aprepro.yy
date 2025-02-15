@@ -1,23 +1,22 @@
-// Copyright(C) 1999-2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
 // See packages/seacas/LICENSE for details
 %{
-#include "aprepro.h"
-#include "apr_util.h"
 #include "apr_array.h"
+#include "apr_util.h"
+#include "aprepro.h"
 
-#if defined FMT_SUPPORT
-#include <fmt/format.h>
-#endif
 #include <cerrno>
 #include <cfenv>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <fmt/format.h>
+#include <fmt/printf.h>
 #include <iostream>
-#include <stdlib.h>
 
 namespace {
   void reset_error()
@@ -133,12 +132,8 @@ line:     '\n'                  { if (echo) aprepro.lexer->LexerOutput("\n", 1);
         | LBRACE exp RBRACE     { if (echo) {
                                      SEAMS::symrec *format = aprepro.getsym("_FORMAT");
                                      if (format->value.svar.empty()) {
-#if defined FMT_SUPPORT
                                         auto tmpstr = fmt::format("{}", $2);
                                         aprepro.lexer->LexerOutput(tmpstr.c_str(), tmpstr.size());
-#else
-                                        yyerror(aprepro, "Empty _FORMAT string -- no output will be printed. Optional Lib::FMT dependency is not enabled.");
-#endif
                                      }
                                      else {
                                         static char    tmpstr[512];
@@ -172,14 +167,65 @@ bool:     exp LT exp            { $$ = $1 < $3;                         }
         | exp LOR bool          { $$ = $1 || $3;                        }
         | exp LAND bool         { $$ = $1 && $3;                        }
         | LPAR bool RPAR        { $$ = $2;                              }
+
+        | UNDVAR LOR exp        { $$ = 0 || $3; undefined_error(aprepro, $1->name);   }
+        | UNDVAR LAND exp       { $$ = 0 && $3; undefined_error(aprepro, $1->name);   }
+        | exp LOR UNDVAR        { $$ = $1 || 0; undefined_error(aprepro, $3->name);   }
+        | exp LAND UNDVAR       { $$ = $1 && 0; undefined_error(aprepro, $3->name);   }
+        | bool LOR UNDVAR       { $$ = $1 || 0; undefined_error(aprepro, $3->name);   }
+        | bool LAND UNDVAR      { $$ = $1 && 0; undefined_error(aprepro, $3->name);   }
+        | UNDVAR LOR bool       { $$ = 0 || $3; undefined_error(aprepro, $1->name);   }
+        | UNDVAR LAND bool      { $$ = 0 && $3; undefined_error(aprepro, $1->name);   }
 ;
 
 bool:     sexp LT sexp          { $$ = (strcmp($1,$3) <  0 ? 1 : 0);    }
         | sexp GT sexp          { $$ = (strcmp($1,$3) >  0 ? 1 : 0);    }
-        | sexp LE  sexp         { $$ = (strcmp($1,$3) <= 0 ? 1 : 0);    }
-        | sexp GE  sexp         { $$ = (strcmp($1,$3) >= 0 ? 1 : 0);    }
-        | sexp EQ  sexp         { $$ = (strcmp($1,$3) == 0 ? 1 : 0);    }
-        | sexp NE  sexp         { $$ = (strcmp($1,$3) != 0 ? 1 : 0);    }
+        | sexp LE sexp          { $$ = (strcmp($1,$3) <= 0 ? 1 : 0);    }
+        | sexp GE sexp          { $$ = (strcmp($1,$3) >= 0 ? 1 : 0);    }
+        | sexp EQ sexp          { $$ = (strcmp($1,$3) == 0 ? 1 : 0);    }
+        | sexp NE sexp          { $$ = (strcmp($1,$3) != 0 ? 1 : 0);    }
+
+	| exp LT sexp           { $$ = false; yyerror(aprepro, "Comparison of arithmetic with string not defined"); yyerrok;}
+        | exp GT sexp           { $$ = false; yyerror(aprepro, "Comparison of arithmetic with string not defined"); yyerrok;}
+        | exp LE sexp           { $$ = false; yyerror(aprepro, "Comparison of arithmetic with string not defined"); yyerrok;}
+        | exp GE sexp           { $$ = false; yyerror(aprepro, "Comparison of arithmetic with string not defined"); yyerrok;}
+        | exp EQ sexp           { $$ = false; }
+        | exp NE sexp           { $$ = true;  }
+
+	| sexp LT exp           { $$ = false; yyerror(aprepro, "Comparison of string with arithmetic not defined"); yyerrok;}
+        | sexp GT exp           { $$ = false; yyerror(aprepro, "Comparison of string with arithmetic not defined"); yyerrok;}
+        | sexp LE exp           { $$ = false; yyerror(aprepro, "Comparison of string with arithmetic not defined"); yyerrok;}
+        | sexp GE exp           { $$ = false; yyerror(aprepro, "Comparison of string with arithmetic not defined"); yyerrok;}
+        | sexp EQ exp           { $$ = false; }
+        | sexp NE exp           { $$ = true; }
+
+        | UNDVAR LT sexp        { $$ = (strcmp("",$3) <  0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+        | UNDVAR GT sexp        { $$ = (strcmp("",$3) >  0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+        | UNDVAR LE sexp        { $$ = (strcmp("",$3) <= 0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+        | UNDVAR GE sexp        { $$ = (strcmp("",$3) >= 0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+        | UNDVAR EQ sexp        { $$ = (strcmp("",$3) == 0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+        | UNDVAR NE sexp        { $$ = (strcmp("",$3) != 0 ? 1 : 0); undefined_error(aprepro, $1->name);          }
+
+        | sexp LT UNDVAR        { $$ = (strcmp($1,"") <  0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+        | sexp GT UNDVAR        { $$ = (strcmp($1,"") >  0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+        | sexp LE UNDVAR        { $$ = (strcmp($1,"") <= 0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+        | sexp GE UNDVAR        { $$ = (strcmp($1,"") >= 0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+        | sexp EQ UNDVAR        { $$ = (strcmp($1,"") == 0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+        | sexp NE UNDVAR        { $$ = (strcmp($1,"") != 0 ? 1 : 0); undefined_error(aprepro, $3->name);          }
+
+        | UNDVAR LT exp         { $$ = 0  < $3; undefined_error(aprepro, $1->name);          }
+        | UNDVAR GT exp         { $$ = 0  > $3; undefined_error(aprepro, $1->name);          }
+        | UNDVAR LE exp         { $$ = 0 <= $3; undefined_error(aprepro, $1->name);          }
+        | UNDVAR GE exp         { $$ = 0 >= $3; undefined_error(aprepro, $1->name);          }
+        | UNDVAR EQ exp         { $$ = 0 == $3; undefined_error(aprepro, $1->name);          }
+        | UNDVAR NE exp         { $$ = 0 != $3; undefined_error(aprepro, $1->name);          }
+
+        | exp LT UNDVAR         { $$ = $1  < 0; undefined_error(aprepro, $3->name);          }
+        | exp GT UNDVAR         { $$ = $1  > 0; undefined_error(aprepro, $3->name);          }
+        | exp LE UNDVAR         { $$ = $1 <= 0; undefined_error(aprepro, $3->name);          }
+        | exp GE UNDVAR         { $$ = $1 >= 0; undefined_error(aprepro, $3->name);          }
+        | exp EQ UNDVAR         { $$ = $1 == 0; undefined_error(aprepro, $3->name);          }
+        | exp NE UNDVAR         { $$ = $1 != 0; undefined_error(aprepro, $3->name);          }
 
 aexp:   AVAR                    { $$ = aprepro.make_array(*($1->value.avar)); }
         | AFNCT LPAR sexp RPAR  {
@@ -311,6 +357,7 @@ sexp:     QSTRING               { $$ = $1;                              }
             $$ = (char*)"";
         }
         | sexp CONCAT sexp      { concat_string($1, $3, &$$); }
+	| sexp PLU sexp         { concat_string($1, $3, &$$); }
         | SFNCT LPAR exp COMMA exp RPAR {
           if (arg_check($1, $1->value.strfnct_dd == NULL))
             $$ = (char*)(*($1->value.strfnct_dd))($3, $5);
@@ -329,6 +376,12 @@ sexp:     QSTRING               { $$ = $1;                              }
           else
             $$ = (char*)"";
         }
+        | SFNCT LPAR exp COMMA sexp RPAR {
+          if (arg_check($1, $1->value.strfnct_dc == NULL))
+            $$ = (char*)(*($1->value.strfnct_dc))($3, $5);
+          else
+            $$ = (char*)"";
+        }
         | SFNCT LPAR sexp COMMA sexp COMMA sexp  RPAR {
           if (arg_check($1, $1->value.strfnct_ccc == NULL))
             $$ = (char*)(*($1->value.strfnct_ccc))($3, $5, $7);
@@ -342,6 +395,17 @@ sexp:     QSTRING               { $$ = $1;                              }
             $$ = (char*)"";
         }
         | bool QUEST sexp COLON sexp  { $$ = ($1) ? ($3) : ($5);              }
+	| exp TIM sexp          { $$ = (char*)""; yyerror(aprepro, "Multiplying an arithmetic with a string is not defined"); yyerrok;}
+	| sexp TIM exp          { $$ = (char*)""; yyerror(aprepro, "Multiplying a string with an arithmetic is not defined"); yyerrok;}
+	| sexp TIM sexp         { $$ = (char*)""; yyerror(aprepro, "Multiplying a string with a string is not defined"); yyerrok;}
+	| sexp DIV exp          { $$ = (char*)""; yyerror(aprepro, "Dividing a string by an arithmetic is not defined"); yyerrok;}
+	| exp DIV sexp          { $$ = (char*)""; yyerror(aprepro, "Dividing an arithmetic by a string is not defined"); yyerrok;}
+	| sexp DIV sexp         { $$ = (char*)""; yyerror(aprepro, "Dividing a string by a string is not defined"); yyerrok;}
+	| exp PLU sexp          { $$ = (char*)""; yyerror(aprepro, "Adding an arithmetic and a string is not defined"); yyerrok;}
+	| sexp PLU exp          { $$ = (char*)""; yyerror(aprepro, "Adding a string and an arithmetic is not defined"); yyerrok;}
+	| exp SUB sexp          { $$ = (char*)""; yyerror(aprepro, "Subtracting an arithmetic and a string is not defined"); yyerrok;}
+	| sexp SUB exp          { $$ = (char*)""; yyerror(aprepro, "Subtracting a string and an arithmetic is not defined"); yyerrok;}
+	| sexp SUB sexp         { $$ = (char*)""; yyerror(aprepro, "Subtracting a string from a string is not defined"); yyerrok;}
 
 exp:      NUM                   { $$ = $1;                              }
         | INC NUM               { $$ = $2 + 1;                          }
@@ -358,7 +422,7 @@ exp:      NUM                   { $$ = $1;                              }
                                   redefined_warning(aprepro, $1);
                                   set_type(aprepro, $1, token::VAR);                    }
         | AVAR EQUAL exp        { $$ = $3;
-	                          aprepro.redefine_array($1->value.avar);
+                                  aprepro.redefine_array($1->value.avar);
                                   $1->value.var= $3;
                                   redefined_warning(aprepro, $1);
                                   set_type(aprepro, $1, token::VAR);           }
@@ -521,13 +585,15 @@ exp:      NUM                   { $$ = $1;                              }
         | exp TIM exp           { $$ = $1 * $3;                         }
         | exp DIV exp           { if ($3 == 0.)
                                     {
+				      $$ = std::numeric_limits<double>::infinity();
                                       yyerror(aprepro, "Zero divisor");
                                       yyerrok;
                                     }
                                   else
                                     $$ = $1 / $3;                       }
-        | exp MOD exp           { if ($3 == 0.)
+        | exp MOD exp           { if ((int)$3 == 0.)
                                     {
+				      $$ = (int)$1;
                                       yyerror(aprepro, "Zero divisor");
                                       yyerrok;
                                     }

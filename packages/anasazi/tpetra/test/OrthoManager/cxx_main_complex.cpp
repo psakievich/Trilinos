@@ -1,42 +1,10 @@
 // @HEADER
-// ***********************************************************************
-//
+// *****************************************************************************
 //                 Anasazi: Block Eigensolvers Package
-//                 Copyright 2004 Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
+// Copyright 2004 NTESS and the Anasazi contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 //
 //  This test is for the OrthoManager interface to ICGSOrthoManager,
@@ -80,12 +48,13 @@ using std::endl;
 using std::vector;
 
 typedef std::complex<double>                ST;
-typedef ScalarTraits< ST >                 SCT;
+typedef ScalarTraits<ST>                   SCT;
 typedef SCT::magnitudeType                  MT;
-typedef MultiVector< ST, int >              MV;
-typedef Operator< ST, int >                 OP;
-typedef MultiVecTraits< ST, MV >           MVT;
-typedef OperatorTraits< ST, MV, OP >       OPT;
+typedef MultiVector<ST>                     MV;
+typedef MV::global_ordinal_type             GO;
+typedef Operator<ST>                        OP;
+typedef Anasazi::MultiVecTraits<ST,MV>     MVT;
+typedef Anasazi::OperatorTraits<ST,MV,OP>  OPT;
 
 // this is the tolerance that all tests are performed against
 const MT TOL = 1.0e-12;
@@ -105,6 +74,7 @@ int main(int argc, char *argv[])
 {
   const ST ONE = SCT::one();
   const MT ZERO = SCT::magnitude(SCT::zero());
+
   Tpetra::ScopeGuard tpetraScope(&argc,&argv);
 
   int info = 0;
@@ -188,33 +158,32 @@ int main(int argc, char *argv[])
         }
         return -1;
       }
-      // create map
-      map = rcp(new Map<int>(dim,0,comm));
-      M = rcp(new CrsMatrix<ST,int>(map,rnnzmax));
-      if (MyPID == 0) {
-        // Convert interleaved doubles to complex values
-        // HB format is compressed column. CrsMatrix is compressed row.
-        const double *dptr = dvals;
-        const int *rptr = rowind;
-        for (int c=0; c<dim; ++c) {
-          for (int colnnz=0; colnnz < colptr[c+1]-colptr[c]; ++colnnz) {
-            M->insertGlobalValues(*rptr++ - 1,tuple(c),tuple(ST(dptr[0],dptr[1])));
-            dptr += 2;
-          }
-        }
-      }
-      if (MyPID == 0) {
-        // Clean up.
-        free( dvals );
-        free( colptr );
-        free( rowind );
-      }
-      M->fillComplete();
-    } // else M == null
-    else {
-      // let M remain null, allocate map with command-line specified dim
-      map = rcp(new Map<int>(dim,0,comm));
-    }
+     // create map
+     map = rcp (new Map<> (dim, 0, comm));
+     M = rcp (new CrsMatrix<ST> (map, rnnzmax));
+     if (MyPID == 0) {
+       // Convert interleaved doubles to complex values
+       // HB format is compressed column. CrsMatrix is compressed row.
+       const double *dptr = dvals;
+       const int *rptr = rowind;
+       for (int c=0; c<dim; ++c) {
+         for (int colnnz=0; colnnz < colptr[c+1]-colptr[c]; ++colnnz) {
+           M->insertGlobalValues (static_cast<GO> (*rptr++ - 1), tuple<GO> (c), tuple (ST (dptr[0], dptr[1])));
+           dptr += 2;
+         }
+       }
+ 
+       // Clean up.
+       free( dvals );
+       free( colptr );
+       free( rowind );
+     }
+     M->fillComplete();
+   } // else M == null
+   else {
+     // let M remain null, allocate map with command-line specified dim
+     map = rcp(new Map<>(dim,0,comm));
+   }
 
     // Create ortho managers
     RCP<OrthoManager<ST,MV> > OM;
@@ -469,30 +438,31 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
     Array<RCP<const MV> > theX;
     RCP<SerialDenseMatrix<int,ST> > B = rcp( new SerialDenseMatrix<int,ST>(sizeS,sizeS) );
     Array<RCP<SerialDenseMatrix<int,ST> > > C;
-    if ( (t && 3) == 0 ) {
+    if ( (t & 3) == 0 ) {
       // neither <X1,Y1> nor <X2,Y2>
       // C, theX and theY are already empty
     }
-    else if ( (t && 3) == 1 ) {
+    else if ( (t & 3) == 1 ) {
       // X1
       theX = tuple(X1);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX1,sizeS)) );
     }
-    else if ( (t && 3) == 2 ) {
+    else if ( (t & 3) == 2 ) {
       // X2
       theX = tuple(X2);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX2,sizeS)) );
     }
-    else {
+    else if ( (t & 3) == 3 ) {
       // X1 and X2, and the reverse.
       theX = tuple(X1,X2);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX1,sizeS)), 
           rcp(new SerialDenseMatrix<int,ST>(sizeX2,sizeS)) );
     }
+    else {}
 
     try {
       // call routine
-      // if (t && 3) == 3, {
+      // if (t & 3) == 3, {
       //    call with reversed input: X2 X1
       // }
       // test all outputs for correctness
@@ -550,7 +520,7 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
       }
 
       // do we run the reversed input?
-      if ( (t && 3) == 3 ) {
+      if ( (t & 3) == 3 ) {
         // copies of S,MS
         Scopy = MVT::CloneCopy(*S);
         // randomize this data, it should be overwritten
@@ -559,6 +529,7 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
           Anasazi::randomSDM(*C[i]);
         }
         // flip the inputs
+        C = tuple( C[1], C[0] );
         theX = tuple( theX[1], theX[0] );
         // run test
         ret = OM->projectAndNormalize(*Scopy,theX,C,B);
@@ -594,6 +565,7 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
         C_outs.back().push_back( rcp( new SerialDenseMatrix<int,ST>(*C[1]) ) );
         C_outs.back().push_back( rcp( new SerialDenseMatrix<int,ST>(*C[0]) ) );
         // flip the inputs back
+        C = tuple( C[1], C[0] );
         theX = tuple( theX[1], theX[0] );
       }
 
@@ -614,9 +586,9 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
           RCP<MV> tmp = MVT::Clone(*S,sizeS);
           MVT::MvTimesMatAddMv(ONE,*S_outs[o],*B_outs[o],ZERO,*tmp);
           if (C_outs[o].size() > 0) {
-            MVT::MvTimesMatAddMv(ONE,*X1,*C_outs[o][0],ONE,*tmp);
+            MVT::MvTimesMatAddMv(ONE,*theX[0],*C_outs[o][0],ONE,*tmp);
             if (C_outs[o].size() > 1) {
-              MVT::MvTimesMatAddMv(ONE,*X2,*C_outs[o][1],ONE,*tmp);
+              MVT::MvTimesMatAddMv(ONE,*theX[1],*C_outs[o][1],ONE,*tmp);
             }
           }
           MT err = MVDiff(*tmp,*S);
@@ -646,7 +618,7 @@ int testProjectAndNormalize(RCP<OrthoManager<ST,MV> > OM,
         }
       }
     }
-    catch (OrthoError e) {
+    catch (const OrthoError &e) {
       sout << "   -------------------------------------------         projectAndNormalize() threw exception" << endl;
       sout << "   Error: " << e.what() << endl;
       numerr++;
@@ -756,7 +728,7 @@ int testNormalize(RCP<OrthoManager<ST,MV> > OM, RCP<const MV> S)
         sout << "  " << t << "|| S_in - S_out*B || : " << err << endl;
       }
     }
-    catch (OrthoError e) {
+    catch (const OrthoError &e) {
       sout << "   -------------------------------------------         normalize() threw exception" << endl;
       sout << "   Error: " << e.what() << endl;
       numerr++;
@@ -832,30 +804,31 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
 
     Array<RCP<const MV> > theX;
     Array<RCP<SerialDenseMatrix<int,ST> > > C;
-    if ( (t && 3) == 0 ) {
+    if ( (t & 3) == 0 ) {
       // neither X1 nor X2
       // C and theX are already empty
     }
-    else if ( (t && 3) == 1 ) {
+    else if ( (t & 3) == 1 ) {
       // X1
       theX = tuple(X1);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX1,sizeS)) );
     }
-    else if ( (t && 3) == 2 ) {
+    else if ( (t & 3) == 2 ) {
       // X2
       theX = tuple(X2);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX2,sizeS)) );
     }
-    else {
+    else if ( (t & 3) == 3 ) {
       // X1 and X2, and the reverse.
       theX = tuple(X1,X2);
       C = tuple( rcp(new SerialDenseMatrix<int,ST>(sizeX1,sizeS)), 
           rcp(new SerialDenseMatrix<int,ST>(sizeX2,sizeS)) );
     }
+    else {}
 
     try {
       // call routine
-      // if (t && 3) == 3, {
+      // if (t & 3) == 3, {
       //    call with reversed input: X2 X1
       // }
       // test all outputs for correctness
@@ -886,7 +859,7 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
       }
 
       // do we run the reversed input?
-      if ( (t && 3) == 3 ) {
+      if ( (t & 3) == 3 ) {
         // copies of S,MS
         Scopy = MVT::CloneCopy(*S);
         // randomize this data, it should be overwritten
@@ -894,6 +867,7 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
           Anasazi::randomSDM(*C[i]);
         }
         // flip the inputs
+        C = tuple( C[1], C[0] );
         theX = tuple( theX[1], theX[0] );
         // run test
         OM->project(*Scopy,theX,C);
@@ -907,6 +881,7 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
         C_outs.back().push_back( rcp( new SerialDenseMatrix<int,ST>(*C[1]) ) );
         C_outs.back().push_back( rcp( new SerialDenseMatrix<int,ST>(*C[0]) ) );
         // flip the inputs back
+        C = tuple( C[1], C[0] );
         theX = tuple( theX[1], theX[0] );
       }
 
@@ -916,9 +891,9 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
         {
           RCP<MV> tmp = MVT::CloneCopy(*S_outs[o]);
           if (C_outs[o].size() > 0) {
-            MVT::MvTimesMatAddMv(ONE,*X1,*C_outs[o][0],ONE,*tmp);
+            MVT::MvTimesMatAddMv(ONE,*theX[0],*C_outs[o][0],ONE,*tmp);
             if (C_outs[o].size() > 1) {
-              MVT::MvTimesMatAddMv(ONE,*X2,*C_outs[o][1],ONE,*tmp);
+              MVT::MvTimesMatAddMv(ONE,*theX[1],*C_outs[o][1],ONE,*tmp);
             }
           }
           MT err = MVDiff(*tmp,*S);
@@ -969,7 +944,7 @@ int testProject(RCP<OrthoManager<ST,MV> > OM,
       }
 
     }
-    catch (OrthoError e) {
+    catch (const OrthoError &e) {
       sout << "   -------------------------------------------         project() threw exception" << endl;
       sout << "   Error: " << e.what() << endl;
       numerr++;

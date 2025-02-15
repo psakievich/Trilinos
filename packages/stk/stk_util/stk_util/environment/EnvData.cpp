@@ -63,7 +63,6 @@ namespace stk {
       m_inputFileRequired(true),
       m_checkSubCycle(false),
       m_checkSmRegion(false),
-      m_isZapotec(false),
       m_worldComm(MPI_COMM_NULL),
       m_parallelComm(MPI_COMM_NULL),
       m_parallelSize(-1),
@@ -88,6 +87,14 @@ namespace stk {
     stk::register_ostream(sierra::tout(), "tout");
 
     static_cast<stk::indent_streambuf *>(sierra::dwout().rdbuf())->redirect(sierra::dout().rdbuf());
+  }
+
+  void EnvData::initialize(MPI_Comm worldComm)
+  {
+    m_worldComm = worldComm;
+    m_parallelComm = worldComm;
+    m_parallelSize = stk::parallel_machine_size(m_parallelComm);
+    m_parallelRank = stk::parallel_machine_rank(m_parallelComm);
   }
 
   EnvData::~EnvData()

@@ -1,40 +1,10 @@
 // @HEADER
-// ***********************************************************************
-//
+// *****************************************************************************
 //          Tpetra: Templated Linear Algebra Services Package
-//                 Copyright (2008) Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// ************************************************************************
+// Copyright 2008 NTESS and the Tpetra contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef TPETRA_DETAILS_WRAPPEDDUALVIEW_HPP
@@ -44,6 +14,7 @@
 #include <Tpetra_Details_temporaryViewUtils.hpp>
 #include <Kokkos_DualView.hpp>
 #include "Teuchos_TestForException.hpp"
+#include "Tpetra_Details_ExecutionSpaces.hpp"
 #include <sstream>
 
 //#define DEBUG_UVM_REMOVAL  // Works only with gcc > 4.8
@@ -58,8 +29,8 @@
   if (envVarSet && (std::strcmp(envVarSet,"1") == 0)) \
     std::cout << (fn) << " called from " << callerstr \
               << " at " << filestr << ":"<<linnum \
-              << " host cnt " << dualView.h_view.use_count()  \
-              << " device cnt " << dualView.d_view.use_count()  \
+              << " host cnt " << dualView.view_host().use_count()  \
+              << " device cnt " << dualView.view_device().use_count()  \
               << std::endl; \
   }
 
@@ -100,6 +71,7 @@ using enableIfNonConstData = std::enable_if_t<!hasConstData<DualViewType>::value
 template <typename DualViewType>
 enableIfNonConstData<DualViewType>
 sync_host(DualViewType dualView) {
+  // This will sync, but only if needed
   dualView.sync_host();
 }
 
@@ -110,14 +82,15 @@ sync_host(DualViewType dualView) { }
 template <typename DualViewType>
 enableIfNonConstData<DualViewType>
 sync_device(DualViewType dualView) {
-  dualView.sync_device();
+  // This will sync, but only if needed
+    dualView.sync_device();
 }
 
 template <typename DualViewType>
 enableIfConstData<DualViewType>
 sync_device(DualViewType dualView) { }
 
-}
+}// end namespace Impl
 
 /// \brief Whether WrappedDualView reference count checking is enabled. Initially true.
 /// Since the DualView sync functions are not thread-safe, tracking should be disabled
@@ -152,6 +125,10 @@ private:
   static constexpr bool deviceMemoryIsHostAccessible =
     Kokkos::SpaceAccessibility<Kokkos::DefaultHostExecutionSpace, typename t_dev::memory_space>::accessible;
 
+private:
+  template <typename>
+  friend class WrappedDualView;
+
 public:
   WrappedDualView() {}
 
@@ -159,6 +136,21 @@ public:
     : originalDualView(dualV),
       dualView(originalDualView)
   { }
+
+  //! Conversion copy constructor.
+  template <class SrcDualViewType>
+  WrappedDualView(const WrappedDualView<SrcDualViewType>& src)
+    : originalDualView(src.originalDualView),
+      dualView(src.dualView)
+  { }
+  
+  //! Conversion assignment operator.
+  template <class SrcDualViewType>
+  WrappedDualView& operator=(const WrappedDualView<SrcDualViewType>& src) {
+    originalDualView = src.originalDualView;
+    dualView = src.dualView;
+    return *this;
+  }
 
   // This is an expert-only constructor
   // For WrappedDualView to manage synchronizations correctly,
@@ -218,7 +210,7 @@ public:
   }
 
   size_t extent(const int i) const {
-    return dualView.h_view.extent(i);
+    return dualView.view_host().extent(i);
   }
 
   void stride(size_t * stride_) const {
@@ -227,11 +219,11 @@ public:
 
 
   size_t origExtent(const int i) const {
-    return originalDualView.h_view.extent(i);
+    return originalDualView.view_host().extent(i);
   }
 
   const char * label() const {
-    return dualView.d_view.label();
+    return dualView.view_device().label();
   }
 
 
@@ -241,6 +233,7 @@ public:
   ) const
   {
     DEBUG_UVM_REMOVAL_PRINT_CALLER("getHostViewReadOnly");
+    
     if(needsSyncPath()) {
       throwIfDeviceViewAlive();
       impl::sync_host(originalDualView);
@@ -278,7 +271,7 @@ public:
     }
     if(needsSyncPath()) {
       throwIfDeviceViewAlive();
-      if (deviceMemoryIsHostAccessible) Kokkos::fence();
+      if (deviceMemoryIsHostAccessible) Kokkos::fence("WrappedDualView::getHostView");
       dualView.clear_sync_state();
       dualView.modify_host();
     }
@@ -327,7 +320,7 @@ public:
     }
     if(needsSyncPath()) {
       throwIfHostViewAlive();
-      if (deviceMemoryIsHostAccessible) Kokkos::fence();
+      if (deviceMemoryIsHostAccessible) Kokkos::fence("WrappedDualView::getDeviceView");
       dualView.clear_sync_state();
       dualView.modify_device();
     }
@@ -558,11 +551,11 @@ public:
   }
 
   int host_view_use_count() const {
-    return originalDualView.h_view.use_count();
+    return originalDualView.view_host().use_count();
   }
 
   int device_view_use_count() const {
-    return originalDualView.d_view.use_count();
+    return originalDualView.view_device().use_count();
   }
 
 
@@ -604,8 +597,9 @@ private:
   }
 
   bool memoryIsAliased() const {
-    return deviceMemoryIsHostAccessible && dualView.h_view.data() == dualView.d_view.data();
+    return deviceMemoryIsHostAccessible && dualView.view_host().data() == dualView.view_device().data();
   }
+
 
   /// \brief needsSyncPath tells us whether we need the "sync path" where we (potentially) fence,
   ///        check use counts and take care of sync/modify for the underlying DualView.
@@ -614,9 +608,9 @@ private:
   /// 1. If WrappedDualView tracking is disabled, then never take the sync path.
   /// 2. For non-GPU architectures where the host/device pointers are aliased
   ///    we don't need the "sync path."
-  /// 3. For GPUs, we always need the "sync path" in two cases: first, if we're using a memory space
-  ///    shared between host and device (e.g. CudaUVMSpace), where we need to make sure
-  ///    to fence before reading memory on host. And second, if the host/device pointers are aliased.
+  /// 3. For GPUs, we always need the "sync path."  For shared host/device memory (e.g. CudaUVM)
+  ///    the Kokkos::deep_copy in the sync is a no-op, but the fence associated with it matters.
+  ///
   ///
   /// Avoiding the "sync path" speeds up calculations on architectures where we can
   /// avoid it (e.g. SerialNode) by not not touching the modify flags.
@@ -625,39 +619,34 @@ private:
   /// that don't otherwise have an intrinsic fencing mechanism will need to trigger the
   /// "sync path"
   bool needsSyncPath() const {
-
     if(!wdvTrackingEnabled)
       return false;
 
-#ifdef KOKKOS_ENABLE_CUDA
-    return std::is_same<typename t_dev::memory_space,Kokkos::CudaUVMSpace>::value || !memoryIsAliased();
-#elif defined(KOKKOS_ENABLE_SYCL)
-    return std::is_same<typename t_dev::memory_space,Kokkos::Experimental::SYCLSharedUSMSpace>::value || !memoryIsAliased();
-#else
-    return !memoryIsAliased();
-#endif
+    // We check to see if the memory is not aliased *or* if it is a supported
+    // (heterogeneous memory) accelerator (for shared host/device memory).
+    return !memoryIsAliased() || Spaces::is_gpu_exec_space<typename DualViewType::execution_space>();
   }
 
 
   void throwIfViewsAreDifferentSizes() const {    
     // Here we check *size* (the product of extents) rather than each extent individually.
     // This is mostly designed to catch people resizing one view, but not the other.
-    if(dualView.d_view.size() != dualView.h_view.size()) {    
+    if(dualView.view_device().size() != dualView.view_host().size()) {    
         std::ostringstream msg;
-        msg << "Tpetra::Details::WrappedDualView (name = " << dualView.d_view.label()
+        msg << "Tpetra::Details::WrappedDualView (name = " << dualView.view_device().label()
             << "; host and device views are different sizes: "
-            << dualView.h_view.size() << " vs " <<dualView.h_view.size();
+            << dualView.view_host().size() << " vs " <<dualView.view_host().size();
         throw std::runtime_error(msg.str());
     }
   }
 
   void throwIfHostViewAlive() const {
     throwIfViewsAreDifferentSizes();
-    if (dualView.h_view.use_count() > dualView.d_view.use_count()) {
+    if (dualView.view_host().use_count() > dualView.view_device().use_count()) {
       std::ostringstream msg;
-      msg << "Tpetra::Details::WrappedDualView (name = " << dualView.d_view.label()
-          << "; host use_count = " << dualView.h_view.use_count()
-          << "; device use_count = " << dualView.d_view.use_count() << "): "
+      msg << "Tpetra::Details::WrappedDualView (name = " << dualView.view_device().label()
+          << "; host use_count = " << dualView.view_host().use_count()
+          << "; device use_count = " << dualView.view_device().use_count() << "): "
           << "Cannot access data on device while a host view is alive";
       throw std::runtime_error(msg.str());
     }
@@ -665,18 +654,18 @@ private:
 
   void throwIfDeviceViewAlive() const {
     throwIfViewsAreDifferentSizes();
-    if (dualView.d_view.use_count() > dualView.h_view.use_count()) {
+    if (dualView.view_device().use_count() > dualView.view_host().use_count()) {
       std::ostringstream msg;
-      msg << "Tpetra::Details::WrappedDualView (name = " << dualView.d_view.label()
-          << "; host use_count = " << dualView.h_view.use_count()
-          << "; device use_count = " << dualView.d_view.use_count() << "): "
+      msg << "Tpetra::Details::WrappedDualView (name = " << dualView.view_device().label()
+          << "; host use_count = " << dualView.view_host().use_count()
+          << "; device use_count = " << dualView.view_device().use_count() << "): "
           << "Cannot access data on host while a device view is alive";
       throw std::runtime_error(msg.str());
     }
   }
  
   bool iAmASubview() {
-    return originalDualView.h_view != dualView.h_view;
+    return originalDualView.view_host() != dualView.view_host();
   }
 
   mutable DualViewType originalDualView;

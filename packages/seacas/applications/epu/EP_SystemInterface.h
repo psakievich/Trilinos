@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2022 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2022, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -21,7 +21,6 @@ namespace Excn {
   {
   public:
     explicit SystemInterface(int rank = 0);
-    ~SystemInterface();
 
     bool parse_options(int argc, char **argv);
 
@@ -71,13 +70,18 @@ namespace Excn {
     bool omit_faceblocks() const { return omitFaceBlocks_; }
     bool int64() const { return intIs64Bit_; }
     void set_int64() const { intIs64Bit_ = true; }
-    int  compress_data() const { return compressData_; }
+    int  compress_data() const { return compressionLevel_; }
     bool zlib() const { return zlib_; }
     bool szip() const { return szip_; }
+    bool zstd() const { return zstd_; }
+    bool bz2() const { return bz2_; }
+    int  quantize_nsd() const { return quantizeNSD_; }
+    bool quantize() const { return quantizeNSD_ > 0; }
     bool subcycle_join() const { return subcycleJoin_; }
     bool output_shared_nodes() const { return outputSharedNodes_; }
     bool is_auto() const { return auto_; }
     bool keep_temporary() const { return keepTemporary_; }
+    bool remove_file_per_rank_files() const;
     bool verify_valid_file() const { return verifyValidFile_; }
     int  max_open_files() const
     {
@@ -137,10 +141,13 @@ namespace Excn {
     int          stepInterval_{1};
     int          subcycle_{-1};
     int          cycle_{-1};
-    int          compressData_{0};
+    int          compressionLevel_{0};
+    int          quantizeNSD_{0};
     int          maxOpenFiles_{0};
-    bool         zlib_{true};
+    bool         zlib_{false};
     bool         szip_{false};
+    bool         zstd_{false};
+    bool         bz2_{false};
     bool         sumSharedNodes_{false};
     bool         addProcessorIdField_{false};
     bool         addProcessorIdMap_{false};
@@ -159,6 +166,7 @@ namespace Excn {
     bool         outputSharedNodes_{false};
     bool         auto_{false};
     bool         keepTemporary_{false};
+    bool         removeFilePerRankFiles_{false};
     bool         verifyValidFile_{false};
     bool         addNodalCommunicationMap_{false};
 

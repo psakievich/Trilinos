@@ -1,44 +1,10 @@
 // @HEADER
-//
-// ***********************************************************************
-//
+// *****************************************************************************
 //           Amesos2: Templated Direct Sparse Solver Package
-//                  Copyright 2011 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /**
@@ -84,6 +50,8 @@
 
 #include "Amesos2_config.h"
 
+#include "Teuchos_CompilerCodeTweakMacros.hpp"
+
 #include "Amesos2_Solver.hpp"
 #include "Amesos2_SolverTraits.hpp"
 
@@ -96,7 +64,7 @@
 #include "Amesos2_Basker.hpp"
 #endif
 
-#ifdef HAVE_AMESOS2_SHYLUBASKER
+#ifdef HAVE_AMESOS2_SHYLU_NODEBASKER
 #include "Amesos2_ShyLUBasker.hpp"
 #endif
 
@@ -116,7 +84,7 @@
 #include "Amesos2_Umfpack.hpp"
 #endif
 
-#ifdef HAVE_AMESOS2_TACHO       // Tacho
+#ifdef HAVE_AMESOS2_SHYLU_NODETACHO       // Tacho
 #include "Amesos2_Tacho.hpp"
 #endif
 
@@ -126,6 +94,10 @@
 
 #ifdef HAVE_AMESOS2_PARDISO_MKL // MKL version of Pardiso
 #include "Amesos2_PardisoMKL.hpp"
+#endif
+
+#ifdef HAVE_AMESOS2_CSS_MKL // Cluster-Sparse solver from MKL
+#include "Amesos2_CssMKL.hpp"
 #endif
 
 #ifdef HAVE_AMESOS2_LAPACK
@@ -268,7 +240,7 @@ namespace Amesos2 {
   template < class Matrix,
              class Vector >
   Solver<Matrix,Vector>*
-  create(const std::string solverName, const Matrix* A, Vector* X, const Vector* B);
+  create(const std::string& solverName, const Matrix* A, Vector* X, const Vector* B);
 
 
   /**
@@ -290,7 +262,7 @@ namespace Amesos2 {
   template < class Matrix,
              class Vector >
   Teuchos::RCP<Solver<Matrix,Vector> >
-  create(const std::string solverName,
+  create(const std::string& solverName,
          const Teuchos::RCP<const Matrix> A,
          const Teuchos::RCP<Vector>       X,
          const Teuchos::RCP<const Vector> B);
@@ -317,7 +289,7 @@ namespace Amesos2 {
   template < class Matrix,
              class Vector >
   Solver<Matrix,Vector>*
-  create(const std::string solverName, const Matrix* A);
+  create(const std::string& solverName, const Matrix* A);
 
 
   /**
@@ -341,7 +313,7 @@ namespace Amesos2 {
   template < class Matrix,
              class Vector >
   Teuchos::RCP<Solver<Matrix,Vector> >
-  create(const std::string solverName,
+  create(const std::string& solverName,
          const Teuchos::RCP<const Matrix> A);
 
 
@@ -358,10 +330,10 @@ namespace Amesos2 {
                                                       Teuchos::RCP<const Vector> B )
     {
       ctassert<
-        Meta::is_same<
+        std::is_same_v<
           typename MatrixTraits<Matrix>::scalar_t,
           typename MultiVecAdapter<Vector>::scalar_t
-        >::value
+        >
       > same_scalar_assertion;
       (void)same_scalar_assertion; // This stops the compiler from warning about unused declared variables
 
@@ -429,10 +401,10 @@ struct throw_no_matrix_support_exception {
                                                       Teuchos::RCP<Vector>       X,
                                                       Teuchos::RCP<const Vector> B )
     {
-      return Meta::if_then_else<
+      return std::conditional_t<
       solver_supports_scalar<ConcreteSolver, typename MatrixTraits<Matrix>::scalar_t>::value,
         create_solver_with_supported_type<ConcreteSolver,Matrix,Vector>,
-        throw_no_scalar_support_exception<ConcreteSolver,Matrix,Vector> >::type::apply(A, X, B);
+        throw_no_scalar_support_exception<ConcreteSolver,Matrix,Vector> >::apply(A, X, B);
     }
   };
 
@@ -453,10 +425,10 @@ struct throw_no_matrix_support_exception {
                                                       Teuchos::RCP<Vector>       X,
                                                       Teuchos::RCP<const Vector> B )
     {
-      return Meta::if_then_else<
+      return std::conditional_t<
         solver_supports_matrix<ConcreteSolver, Matrix>::value,
         handle_solver_scalar_type_support<ConcreteSolver,Matrix,Vector>,
-        throw_no_matrix_support_exception<ConcreteSolver,Matrix,Vector> >::type::apply(A, X, B);
+        throw_no_matrix_support_exception<ConcreteSolver,Matrix,Vector> >::apply(A, X, B);
     }
   };
 
@@ -481,7 +453,7 @@ struct throw_no_matrix_support_exception {
    *
    * \relatesalso Amesos2::Solver
    */
-  bool query(const std::string solverName);
+  bool query(const std::string& solverName);
 
 
   /////////////////
@@ -538,7 +510,7 @@ struct throw_no_matrix_support_exception {
   template <class Matrix,
             class Vector >
   Solver<Matrix,Vector>*
-  create(const std::string solverName, const Matrix* A){
+  create(const std::string& solverName, const Matrix* A){
     return( create(solverName, rcp(A,false),
                    Teuchos::RCP<Vector>(),
                    Teuchos::RCP<const Vector>()).getRawPtr() );
@@ -548,7 +520,7 @@ struct throw_no_matrix_support_exception {
   template <class Matrix,
             class Vector >
   Teuchos::RCP<Solver<Matrix,Vector> >
-  create(const std::string solverName, const Teuchos::RCP<const Matrix> A){
+  create(const std::string& solverName, const Teuchos::RCP<const Matrix> A){
     return( create(solverName, A, Teuchos::RCP<Vector>(), Teuchos::RCP<const Vector>()) );
   }
 
@@ -556,7 +528,7 @@ struct throw_no_matrix_support_exception {
   template <class Matrix,
             class Vector >
   Teuchos::RCP<Solver<Matrix,Vector> >
-  create(const std::string solverName, const Matrix* A, Vector* X, const Vector* B)
+  create(const std::string& solverName, const Matrix* A, Vector* X, const Vector* B)
   {
     // Pass non-owning Teuchos::RCP objects to other factory method
     return( create(solverName, rcp(A,false), rcp(X,false), rcp(B,false)) );
@@ -566,7 +538,7 @@ struct throw_no_matrix_support_exception {
   template <class Matrix,
             class Vector >
   Teuchos::RCP<Solver<Matrix,Vector> >
-  create(const std::string solver_name,
+  create(const std::string& solver_name,
          const Teuchos::RCP<const Matrix> A,
          const Teuchos::RCP<Vector>       X,
          const Teuchos::RCP<const Vector> B)
@@ -576,7 +548,7 @@ struct throw_no_matrix_support_exception {
     // Check for our native solver first.  Treat KLU and KLU2 as equals.
     //
     // We use compiler guards in case a user does want to disable KLU2
-#ifdef HAVE_AMESOS2_SHYLUBASKER
+#ifdef HAVE_AMESOS2_SHYLU_NODEBASKER
     if((solverName == "ShyLUBasker") || (solverName == "shylubasker") || (solverName == "amesos2_shylubasker"))
     {
       return handle_solver_matrix_and_type_support<ShyLUBasker, Matrix,Vector>::apply(A,X,B);
@@ -623,7 +595,7 @@ struct throw_no_matrix_support_exception {
     }
 #endif
 
-#ifdef HAVE_AMESOS2_TACHO
+#ifdef HAVE_AMESOS2_SHYLU_NODETACHO
     if((solverName == "amesos2_tacho") ||
        (solverName == "tacho")){
       return handle_solver_matrix_and_type_support<TachoSolver,Matrix,Vector>::apply(A, X, B);
@@ -646,6 +618,14 @@ struct throw_no_matrix_support_exception {
       return handle_solver_matrix_and_type_support<PardisoMKL,Matrix,Vector>::apply(A, X, B);
     }
 #endif
+#ifdef HAVE_AMESOS2_CSS_MKL
+    if((solverName == "amesos2_css_mkl") ||
+       (solverName == "css_mkl") ||
+       (solverName == "amesos2_cssmkl")  ||
+       (solverName == "cssmkl")){
+      return handle_solver_matrix_and_type_support<CssMKL,Matrix,Vector>::apply(A, X, B);
+    }
+#endif
 
 #ifdef HAVE_AMESOS2_LAPACK
     if((solverName == "amesos2_lapack") ||
@@ -662,7 +642,7 @@ struct throw_no_matrix_support_exception {
         return handle_solver_matrix_and_type_support<MUMPS,Matrix,Vector>::apply(A,X,B);
       }
 #endif
-              
+
 #ifdef HAVE_AMESOS2_STRUMPACK
     if((solverName == "STRUMPACK") || (solverName == "strumpack") ||
        (solverName == "amesos2_STRUMPACK") || (solverName == "amesos2_strumpack"))
@@ -688,6 +668,7 @@ struct throw_no_matrix_support_exception {
     std::string err_msg = solver_name + " is not enabled or is not supported";
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::invalid_argument, err_msg);
     //return( Teuchos::null ); // unreachable
+    TEUCHOS_UNREACHABLE_RETURN(Teuchos::null);
   }
 
 } // end namespace Amesos2

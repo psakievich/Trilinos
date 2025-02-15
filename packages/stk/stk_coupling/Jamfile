@@ -48,7 +48,8 @@ if $(RTenv-arg) = "user" {
 project votd
   : requirements
     $(sierra-warnings)
-    <define>STK_BUILT_IN_SIERRA
+    <define>STK_BUILT_FOR_SIERRA
+    <define>STK_BUILT_WITH_BJAM
     <include>$(stk_coupling-root-inc)
   : usage-requirements
     <include>$(stk_coupling-root-inc)
@@ -67,13 +68,14 @@ local installed-end-user-files =
 # be installed for end-users. (This is only intended to be used for testing.)
 local installed-developer-files = 
   stk_coupling_utest 
+  stk_coupling_doc_tests
   ;
 
 #
 # SECTION 2: Development install
 #
-explicit install-serial-targets ;
-alias install-serial-targets ;
+
+
 
 # Dependencies listed in this target are installed in the developer's project.
 # This should include all executables and any other files needed for developer use.
@@ -156,8 +158,18 @@ exe stk_coupling_utest
     [ glob $(stk_coupling-root)/../stk_unit_tests/stk_coupling/*.cpp ]
     /sierra/stk_coupling//stk_coupling
     /sierra/stk_unit_test_utils//stk_unit_main
-    /tpl/gtest//gtest
+    /tpl/googletest//gtest
 
   : <tag>@sierra-exec-tag
+  ;
+
+exe stk_coupling_doc_tests
+  :
+    [ glob $(stk_coupling-root)/../stk_doc_tests/stk_coupling/*.cpp ]
+    /sierra/stk_coupling//stk_coupling
+    /sierra/stk_unit_test_utils//stk_unit_main
+  : <tag>@sierra-exec-tag
+    <include>$(stk_coupling-root-inc)
+    <include>$(stk_coupling-root)/../stk_doc_tests/stk_coupling
   ;
 

@@ -1,19 +1,22 @@
-// Copyright(C) 1999-2021, 2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2021, 2023, 2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
 // See packages/seacas/LICENSE for details
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
 
 #include "ED_SystemInterface.h"
 #include "Tolerance.h"
-#include "exoII_read.h"
+#include "assembly.h"
 #include "exo_block.h"
+#include "exo_read.h"
 #include "exodusII.h"
 #include "fmt/ostream.h"
+#include "fmt/ranges.h"
 #include "node_set.h"
 #include "side_set.h"
 #include "smart_assert.h"
@@ -22,17 +25,17 @@
 namespace {
 
   template <typename INT>
-  bool Check_Nodal(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2, const std::vector<INT> &node_map,
+  bool Check_Nodal(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &node_map,
                    const INT *id_map, bool check_only);
   template <typename INT>
-  bool Check_Element_Block(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
+  bool Check_Element_Block(Exo_Read<INT> &file1, Exo_Read<INT> &file2,
                            const std::vector<INT> &elmt_map, const std::vector<INT> &node_map);
   template <typename INT>
-  bool Check_Nodeset(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
-                     const std::vector<INT> &node_map, bool check_only);
+  bool Check_Nodeset(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &node_map,
+                     bool check_only);
   template <typename INT>
-  bool Check_Sideset(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
-                     const std::vector<INT> &elmt_map, bool check_only);
+  bool Check_Sideset(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &elmt_map,
+                     bool check_only);
 
   template <typename INT>
   bool Check_Element_Block_Params(const Exo_Block<INT> *block1, const Exo_Block<INT> *block2);
@@ -40,10 +43,13 @@ namespace {
   bool Check_Element_Block_Connectivity(Exo_Block<INT> *block1, Exo_Block<INT> *block2,
                                         const std::vector<INT> &elmt_map,
                                         const std::vector<INT> &node_map);
+  template <typename INT> bool Check_Assembly(Exo_Read<INT> &file1, Exo_Read<INT> &file2);
+  template <typename INT>
+  bool Check_Assembly_Params(const Assembly<INT> *assembly1, const Assembly<INT> *assembly2);
   bool close_compare(const std::string &st1, const std::string &st2);
 } // namespace
 
-template <typename INT> bool Check_Global(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2)
+template <typename INT> bool Check_Global(Exo_Read<INT> &file1, Exo_Read<INT> &file2)
 {
   bool is_same = true;
   if (file1.Dimension() != file2.Dimension()) {
@@ -76,7 +82,7 @@ template <typename INT> bool Check_Global(ExoII_Read<INT> &file1, ExoII_Read<INT
 }
 
 template <typename INT>
-void Check_Compatible_Meshes(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2, bool check_only,
+void Check_Compatible_Meshes(Exo_Read<INT> &file1, Exo_Read<INT> &file2, bool check_only,
                              const std::vector<INT> &node_map, const std::vector<INT> &elmt_map,
                              const INT *node_id_map)
 {
@@ -102,6 +108,14 @@ void Check_Compatible_Meshes(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2, boo
     is_diff = true;
   }
 
+  if (!Check_Assembly(file1, file2)) {
+    Warning(fmt::format(".. Differences found in assembly metadata or assembly entity lists. {}\n",
+                        interFace.pedantic ? "" : "[ignored]"));
+    if (interFace.pedantic) {
+      is_diff = true;
+    }
+  }
+
   if (is_diff) {
     Warning(".. Differences found in mesh (non-transient) data.  Aborting...\n");
     exit(1);
@@ -110,7 +124,7 @@ void Check_Compatible_Meshes(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2, boo
 
 namespace {
   template <typename INT>
-  bool Check_Nodal(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2, const std::vector<INT> &node_map,
+  bool Check_Nodal(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &node_map,
                    const INT *id_map, bool check_only)
   {
     bool is_same = true;
@@ -190,7 +204,7 @@ namespace {
   }
 
   template <typename INT>
-  bool Check_Element_Block(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
+  bool Check_Element_Block(Exo_Read<INT> &file1, Exo_Read<INT> &file2,
                            const std::vector<INT> &elmt_map, const std::vector<INT> &node_map)
   {
     bool is_same = true;
@@ -222,6 +236,60 @@ namespace {
               if (!Check_Element_Block_Connectivity(block1, block2, elmt_map, node_map)) {
                 is_same = false;
               }
+            }
+          }
+        }
+      }
+    }
+    return is_same;
+  }
+
+  template <typename INT> bool Check_Assembly(Exo_Read<INT> &file1, Exo_Read<INT> &file2)
+  {
+    bool is_same = true;
+    if (file1.Num_Assembly() != file2.Num_Assembly()) {
+      Warning(fmt::format(".. The number of assemblies ({}) in the first file does not match the "
+                          "number ({}) in the second file.\n",
+                          file1.Num_Assembly(), file2.Num_Assembly()));
+      is_same = false;
+    }
+
+    // Verify that assemblies match in the two files...
+    size_t matched = 0;
+    for (size_t b = 0; b < file1.Num_Assembly(); ++b) {
+      Assembly<INT> *assembly1 = file1.Get_Assembly_by_Index(b);
+      if (assembly1 != nullptr) {
+        Assembly<INT> *assembly2 = nullptr;
+        assembly2                = file2.Get_Assembly_by_Name(assembly1->Name());
+        if (assembly2 == nullptr) {
+          Warning(fmt::format(".. Assembly '{}' with id {} exists in first "
+                              "file but not the second.\n",
+                              assembly1->Name(), assembly1->Id()));
+          is_same = false;
+        }
+        else {
+          matched++;
+          if (!Check_Assembly_Params(assembly1, assembly2)) {
+            is_same = false;
+          }
+        }
+      }
+    }
+    if (matched != file2.Num_Assembly()) {
+      for (size_t b = 0; b < file2.Num_Assembly(); ++b) {
+        Assembly<INT> *assembly2 = file2.Get_Assembly_by_Index(b);
+        if (assembly2 != nullptr) {
+          Assembly<INT> *assembly1 = nullptr;
+          assembly1                = file1.Get_Assembly_by_Name(assembly2->Name());
+          if (assembly1 == nullptr) {
+            Warning(fmt::format(".. Assembly '{}' with id {} exists in second "
+                                "file but not the first.\n",
+                                assembly2->Name(), assembly2->Id()));
+            is_same = false;
+          }
+          else {
+            if (!Check_Assembly_Params(assembly2, assembly1)) {
+              is_same = false;
             }
           }
         }
@@ -314,43 +382,96 @@ namespace {
   }
 
   template <typename INT>
+  bool Check_Assembly_Params(const Assembly<INT> *assembly1, const Assembly<INT> *assembly2)
+  {
+    bool is_same = true;
+    SMART_ASSERT(assembly1 && assembly2);
+
+    if (interFace.by_name && assembly1->Id() != assembly2->Id()) {
+      Warning(fmt::format(".. Assembly '{}' ids don't agree ({} != {}).\n", assembly1->Name(),
+                          assembly1->Id(), assembly2->Id()));
+      is_same = false;
+    }
+    if (!interFace.by_name && assembly1->Name() != assembly2->Name()) {
+      if (!assembly1->generatedName_ && !assembly2->generatedName_) {
+        Warning(fmt::format(".. Assembly {} names don't agree ('{}' != '{}').\n", assembly1->Id(),
+                            assembly1->Name(), assembly2->Name()));
+        is_same = false;
+      }
+    }
+    if (assembly1->Type() != assembly2->Type()) {
+      Warning(fmt::format(".. Assembly '{}': entity types don't agree ({} != {}).\n",
+                          assembly1->Name(), ex_name_of_object(assembly1->Type()),
+                          ex_name_of_object(assembly2->Type())));
+      is_same = false;
+    }
+    if (assembly1->Size() != assembly2->Size()) {
+      Warning(fmt::format(".. Assembly '{}': number of entities doesn't agree ({} != {}).\n",
+                          assembly1->Name(), assembly1->Entities().size(),
+                          assembly2->Entities().size()));
+      is_same = false;
+    }
+    if ((assembly1->Type() == assembly2->Type()) &&
+        (assembly1->Entities().size() == assembly2->Entities().size())) {
+      // Check membership of the entities list...
+      if (!std::is_permutation(assembly1->Entities().begin(), assembly1->Entities().end(),
+                               assembly2->Entities().begin())) {
+        Warning(fmt::format(".. Assembly '{}': entity list on first file ({}) does not match "
+                            "entity list on second file ({}).\n",
+                            assembly1->Name(), fmt::join(assembly1->Entities(), ", "),
+                            fmt::join(assembly2->Entities(), ", ")));
+        is_same = false;
+      }
+    }
+
+    return is_same;
+  }
+
+  template <typename INT>
   bool Check_Element_Block_Params(const Exo_Block<INT> *block1, const Exo_Block<INT> *block2)
   {
     bool is_same = true;
     SMART_ASSERT(block1 && block2);
 
-    if (!interFace.by_name && block1->Id() != block2->Id()) {
-      Warning(fmt::format(".. Block ids don't agree ({} != {}\n", block1->Id(), block2->Id()));
-      is_same = false;
+    if (interFace.by_name && block1->Id() != block2->Id()) {
+      Warning(fmt::format(".. Block '{}' ids don't agree ({} != {}).\n", block1->Name(),
+                          block1->Id(), block2->Id()));
+      if (interFace.pedantic) {
+        is_same = false;
+      }
     }
-    if (interFace.by_name && block1->Name() != block2->Name()) {
-      Warning(
-          fmt::format(".. Block names don't agree ({} != {}).\n", block1->Name(), block2->Name()));
-      is_same = false;
+    if (!interFace.by_name && block1->Name() != block2->Name()) {
+      if (!block1->generatedName_ && !block2->generatedName_) {
+        Warning(fmt::format(".. Block {} names don't agree ({} != {}).\n", block1->Id(),
+                            block1->Name(), block2->Name()));
+        if (interFace.pedantic) {
+          is_same = false;
+        }
+      }
     }
     if (!(no_case_equals(block1->Element_Type(), block2->Element_Type()))) {
       if (!interFace.short_block_check ||
           !close_compare(block1->Element_Type(), block2->Element_Type())) {
-        Warning(fmt::format(".. Block {}: element types don't agree ({} != {}).\n", block1->Id(),
+        Warning(fmt::format(".. Block {}: element types don't agree ({} != {}).\n", block1->Name(),
                             block1->Element_Type(), block2->Element_Type()));
         is_same = false;
       }
     }
     if (block1->Size() != block2->Size()) {
       Warning(fmt::format(".. Block {}: number of elements doesn't agree ({} != {}).\n",
-                          block1->Id(), block1->Size(), block2->Size()));
+                          block1->Name(), block1->Size(), block2->Size()));
       is_same = false;
     }
     if (block1->Num_Nodes_per_Element() != block2->Num_Nodes_per_Element()) {
       Warning(fmt::format(".. Block {}: number of nodes per element doesn't agree ({} != {}).\n",
-                          block1->Id(), block1->Num_Nodes_per_Element(),
+                          block1->Name(), block1->Num_Nodes_per_Element(),
                           block2->Num_Nodes_per_Element()));
       is_same = false;
     }
 #if 0
     if (block1->Num_Attributes() != block2->Num_Attributes()) {
       Warning(fmt::format(".. Block {}: number of attributes doesn't agree ({} != {}).\n"
-                        block1->Id(), block1->Num_Attributes(), block2->Num_Attributes());
+                        block1->Name(), block1->Num_Attributes(), block2->Num_Attributes());
       is_same = false;
     }
 #endif
@@ -358,8 +479,8 @@ namespace {
   }
 
   template <typename INT>
-  bool Check_Nodeset(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
-                     const std::vector<INT> &node_map, bool /*unused*/)
+  bool Check_Nodeset(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &node_map,
+                     bool /*unused*/)
   {
     // Currently don't set diff flag for most of these since we
     // can continue (somewhat) with these differences...
@@ -399,6 +520,22 @@ namespace {
               set1->Id(), set1->Size(), set2->Size()));
           if (interFace.pedantic) {
             is_same = false;
+          }
+        }
+        if (interFace.by_name && set1->Id() != set2->Id()) {
+          Warning(fmt::format(".. Nodeset '{}' ids don't agree ({} != {}).\n", set1->Name(),
+                              set1->Id(), set2->Id()));
+          if (interFace.pedantic) {
+            is_same = false;
+          }
+        }
+        if (!interFace.by_name && set1->Name() != set2->Name()) {
+          if (!set1->generatedName_ && !set2->generatedName_) {
+            Warning(fmt::format(".. Nodeset {} names don't agree ({} != {}).\n", set1->Id(),
+                                set1->Name(), set2->Name()));
+            if (interFace.pedantic) {
+              is_same = false;
+            }
           }
         }
       }
@@ -468,8 +605,8 @@ namespace {
   }
 
   template <typename INT>
-  bool Check_Sideset(ExoII_Read<INT> &file1, ExoII_Read<INT> &file2,
-                     const std::vector<INT> &elmt_map, bool /*unused*/)
+  bool Check_Sideset(Exo_Read<INT> &file1, Exo_Read<INT> &file2, const std::vector<INT> &elmt_map,
+                     bool /*unused*/)
   {
     // Currently don't set diff flag for most of these since we
     // can continue (somewhat) with these differences...
@@ -509,6 +646,22 @@ namespace {
               set1->Id(), set1->Size(), set2->Size()));
           if (interFace.pedantic) {
             is_same = false;
+          }
+        }
+        if (interFace.by_name && set1->Id() != set2->Id()) {
+          Warning(fmt::format(".. Sideset '{}' ids don't agree ({} != {}).\n", set1->Name(),
+                              set1->Id(), set2->Id()));
+          if (interFace.pedantic) {
+            is_same = false;
+          }
+        }
+        if (!interFace.by_name && set1->Name() != set2->Name()) {
+          if (!set1->generatedName_ && !set2->generatedName_) {
+            Warning(fmt::format(".. Sideset {} names don't agree ({} != {}).\n", set1->Id(),
+                                set1->Name(), set2->Name()));
+            if (interFace.pedantic) {
+              is_same = false;
+            }
           }
         }
       }
@@ -628,13 +781,13 @@ namespace {
   }
 } // namespace
 
-template bool Check_Global(ExoII_Read<int> &file1, ExoII_Read<int> &file2);
-template void Check_Compatible_Meshes(ExoII_Read<int> &file1, ExoII_Read<int> &file2,
-                                      bool check_only, const std::vector<int> &node_map,
+template bool Check_Global(Exo_Read<int> &file1, Exo_Read<int> &file2);
+template void Check_Compatible_Meshes(Exo_Read<int> &file1, Exo_Read<int> &file2, bool check_only,
+                                      const std::vector<int> &node_map,
                                       const std::vector<int> &elmt_map, const int *node_id_map);
 
-template bool Check_Global(ExoII_Read<int64_t> &file1, ExoII_Read<int64_t> &file2);
-template void Check_Compatible_Meshes(ExoII_Read<int64_t> &file1, ExoII_Read<int64_t> &file2,
+template bool Check_Global(Exo_Read<int64_t> &file1, Exo_Read<int64_t> &file2);
+template void Check_Compatible_Meshes(Exo_Read<int64_t> &file1, Exo_Read<int64_t> &file2,
                                       bool check_only, const std::vector<int64_t> &node_map,
                                       const std::vector<int64_t> &elmt_map,
                                       const int64_t              *node_id_map);

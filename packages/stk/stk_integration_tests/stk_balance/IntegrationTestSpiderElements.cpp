@@ -14,7 +14,7 @@
 namespace
 {
 
-class SpiderElementMesh : public stk::unit_test_util::simple_fields::MeshFixture
+class SpiderElementMesh : public stk::unit_test_util::MeshFixture
 {
 protected:
   void setup_spider_mesh(const std::string & meshSpec, stk::mesh::BulkData::AutomaticAuraOption auraOption)
@@ -27,7 +27,7 @@ protected:
     stk::io::put_io_part_attribute(spherePart);
     stk::io::put_io_part_attribute(beamPart);
 
-    stk::balance::internal::register_internal_fields(get_bulk(), m_balanceSettings);
+    stk::balance::internal::register_internal_fields_and_parts(get_bulk(), m_balanceSettings);
 
     stk::io::fill_mesh(meshSpec, get_bulk());
 
@@ -98,7 +98,7 @@ TEST_F(SpiderElementMesh, move_spider_legs_to_volume_elem_proc)
   if (get_parallel_size() > 4) return;
 
   m_balanceSettings.setShouldFixSpiders(true);
-  std::string meshSpec = stk::unit_test_util::simple_fields::get_option("--mesh-spec", "generated:30x3x30");
+  std::string meshSpec = stk::unit_test_util::get_option("--mesh-spec", "generated:30x3x30");
   setup_spider_mesh(meshSpec, stk::mesh::BulkData::NO_AUTO_AURA);
 
   stk::balance::balanceStkMesh(m_balanceSettings, get_bulk());

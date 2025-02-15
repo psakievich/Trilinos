@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2022 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -38,11 +38,9 @@ namespace {
 
 SystemInterface::SystemInterface() { enroll_options(); }
 
-SystemInterface::~SystemInterface() = default;
-
 void SystemInterface::enroll_options()
 {
-  options_.usage("[options] file_to_split");
+  options_.usage("[options] file_to_split [output_file]");
 
   options_.enroll("help", GetLongOption::NoValue, "Print this summary and exit", nullptr);
 
@@ -58,8 +56,15 @@ void SystemInterface::enroll_options()
       "\t\t'linear'   : #elem/#proc to each processor\n"
       "\t\t'scattered': Shuffle elements to each processor (cyclic)\n"
       "\t\t'random'   : Random distribution of elements, maintains balance\n"
+#if USE_METIS
       "\t\t'rb'       : Metis multilevel recursive bisection\n"
       "\t\t'kway'     : Metis multilevel k-way graph partitioning\n"
+#endif
+#if USE_ZOLTAN
+      "\t\t'rib'      : Zoltan recursive-inertial-bisection\n"
+      "\t\t'rcb'      : Zoltan recursive-coordinate-bisection\n"
+      "\t\t'hsfc'     : Zoltan hilbert-space-filling curve\n"
+#endif
       "\t\t'variable' : Read element-processor assignment from an element variable\n"
       "\t\t'map'      : Read element-processor assignment from an element map [processor_id]\n"
       "\t\t'file'     : Read element-processor assignment from file",
@@ -83,6 +88,21 @@ void SystemInterface::enroll_options()
                   "\t\tIf two integers (count proc), they specify that the next\n"
                   "\t\t\t'count' elements are on processor 'proc'",
                   nullptr);
+
+#if USE_ZOLTAN
+  options_.enroll(
+      "ignore_x", GetLongOption::NoValue,
+      "If using `rcb`, `rib`, or `hsfc`, decompose as if mesh in yz plane. Ignore x dimension.",
+      nullptr);
+  options_.enroll(
+      "ignore_y", GetLongOption::NoValue,
+      "If using `rcb`, `rib`, or `hsfc`, decompose as if mesh in xz plane. Ignore y dimension.",
+      nullptr);
+  options_.enroll(
+      "ignore_z", GetLongOption::NoValue,
+      "If using `rcb`, `rib`, or `hsfc`, decompose as if mesh in xy plane. Ignore z dimension.",
+      nullptr);
+#endif
   options_.enroll("contiguous_decomposition", GetLongOption::NoValue,
                   "If the input mesh is contiguous, create contiguous decompositions", nullptr,
                   nullptr);
@@ -94,7 +114,6 @@ void SystemInterface::enroll_options()
                   "\t\tOmit or enter 'ALL' for all surfaces in model\n"
                   "\t\tDo not split a line/column across processors.",
                   nullptr, "ALL", true);
-
   options_.enroll("output_decomp_map", GetLongOption::NoValue,
                   "Do not output the split files; instead write the decomposition information to "
                   "an element map.\n"
@@ -138,20 +157,30 @@ void SystemInterface::enroll_options()
   options_.enroll("64-bit", GetLongOption::NoValue, "Use 64-bit integers on output database",
                   nullptr, nullptr, true);
 
+  options_.enroll("zlib", GetLongOption::NoValue,
+                  "Use the Zlib / libz compression method if compression is enabled (default) "
+                  "[exodus only, enables netcdf-4].",
+                  nullptr);
+
+  options_.enroll("szip", GetLongOption::NoValue,
+                  "Use SZip compression. [exodus only, enables netcdf-4]", nullptr);
+  options_.enroll("zstd", GetLongOption::NoValue,
+                  "Use Zstd compression. [exodus only, enables netcdf-4, experimental]", nullptr);
+  options_.enroll("bz2", GetLongOption::NoValue,
+                  "Use Bzip2 compression. [exodus only, enables netcdf-4, experimental]", nullptr);
+
   options_.enroll("shuffle", GetLongOption::NoValue,
                   "Use a netcdf4 hdf5-based file and use hdf5s shuffle mode with compression.",
                   nullptr);
 
-  options_.enroll(
-      "zlib", GetLongOption::NoValue,
-      "Use the Zlib / libz compression method if compression is enabled (default) [exodus only].",
-      nullptr);
-
-  options_.enroll("szip", GetLongOption::NoValue,
-                  "Use SZip compression. [exodus only, enables netcdf-4]", nullptr);
-
   options_.enroll("compress", GetLongOption::MandatoryValue,
-                  "Specify the hdf5 compression level [0..9] to be used on the output file.",
+                  "Specify the compression level to be used.  Values depend on algorithm:\n"
+                  "\t\tzlib/bzip2:  0..9\t\tszip:  even, 4..32\t\tzstd:  -131072..22",
+                  nullptr);
+
+  options_.enroll("quantize_nsd", GetLongOption::MandatoryValue,
+                  "Use the lossy quantize compression method.  Value specifies number of digits to "
+                  "retain (1..15) [exodus only]",
                   nullptr, nullptr, true);
 
   options_.enroll("debug", GetLongOption::MandatoryValue,
@@ -160,7 +189,8 @@ void SystemInterface::enroll_options()
                   "\t\t  2 = Communication, NodeSet, Sideset information.\n"
                   "\t\t  4 = Progress information in File/Rank.\n"
                   "\t\t  8 = File/Rank Decomposition information.\n"
-                  "\t\t 16 = Chain/Line generation/decomp information.",
+                  "\t\t 16 = Chain/Line generation/decomp information.\n"
+                  "\t\t 32 = Show decomposition histogram (elements / rank).",
                   "0");
 
   options_.enroll("version", GetLongOption::NoValue, "Print version and exit", nullptr);
@@ -218,7 +248,8 @@ bool SystemInterface::parse_options(int argc, char **argv)
   if (options_.retrieve("help") != nullptr) {
     options_.usage();
     fmt::print(stderr, "\n\t   Can also set options via SLICE_OPTIONS environment variable.\n");
-    fmt::print(stderr, "\n\tDocumentation: https://sandialabs.github.io/seacas-docs/sphinx/html/index.html#slice\n");
+    fmt::print(stderr, "\n\tDocumentation: "
+                       "https://sandialabs.github.io/seacas-docs/sphinx/html/index.html#slice\n");
     fmt::print(stderr, "\n\t->->-> Send email to gsjaardema@gmail.com for slice support.<-<-<-\n");
     exit(EXIT_SUCCESS);
   }
@@ -256,7 +287,7 @@ bool SystemInterface::parse_options(int argc, char **argv)
         "\nThe following options were specified via the SLICE_OPTIONS environment variable:\n"
         "\t{}\n\n",
         options);
-    options_.parse(options, options_.basename(*argv));
+    options_.parse(options, GetLongOption::basename(*argv));
   }
 
   processorCount_   = options_.get_option_value("processors", processorCount_);
@@ -275,7 +306,7 @@ bool SystemInterface::parse_options(int argc, char **argv)
       }
       else {
         fmt::print(stderr,
-                   "\nThe 'file' decompositon method was specified, but no element "
+                   "\nThe 'file' decomposition method was specified, but no element "
                    "to processor mapping file was specified via the -decomposition_file option\n");
         return false;
       }
@@ -307,21 +338,70 @@ bool SystemInterface::parse_options(int argc, char **argv)
   }
 
   shuffle_ = (options_.retrieve("shuffle") != nullptr);
+  zlib_    = (options_.retrieve("zlib") != nullptr);
+  szip_    = (options_.retrieve("szip") != nullptr);
+  zstd_    = (options_.retrieve("zstd") != nullptr);
+  bz2_     = (options_.retrieve("bzip2") != nullptr);
 
-  if (options_.retrieve("szip") != nullptr) {
-    szip_ = true;
-    zlib_ = false;
+  if ((szip_ ? 1 : 0) + (zlib_ ? 1 : 0) + (zstd_ ? 1 : 0) + (bz2_ ? 1 : 0) > 1) {
+    fmt::print(stderr,
+               "ERROR: Only one of 'szip' or 'zlib' or 'zstd' or 'bzip2' can be specified.\n");
   }
-  zlib_ = (options_.retrieve("zlib") != nullptr);
 
-  if (szip_ && zlib_) {
-    fmt::print(stderr, "ERROR: Only one of 'szip' or 'zlib' can be specified.\n");
+  {
+    const char *temp = options_.retrieve("compress");
+    if (temp != nullptr) {
+      compressionLevel_ = std::strtol(temp, nullptr, 10);
+      if (!szip_ && !zlib_ && !zstd_ && !bz2_) {
+        zlib_ = true;
+      }
+
+      if (zlib_ || bz2_) {
+        if (compressionLevel_ < 0 || compressionLevel_ > 9) {
+          fmt::print(stderr,
+                     "ERROR: Bad compression level {}, valid value is between 0 and 9 inclusive "
+                     "for gzip/zlib compression.\n",
+                     compressionLevel_);
+          return false;
+        }
+      }
+      else if (szip_) {
+        if (compressionLevel_ % 2 != 0) {
+          fmt::print(
+              stderr,
+              "ERROR: Bad compression level {}. Must be an even value for szip compression.\n",
+              compressionLevel_);
+          return false;
+        }
+        if (compressionLevel_ < 4 || compressionLevel_ > 32) {
+          fmt::print(stderr,
+                     "ERROR: Bad compression level {}, valid value is between 4 and 32 inclusive "
+                     "for szip compression.\n",
+                     compressionLevel_);
+          return false;
+        }
+      }
+    }
   }
 
-  compressionLevel_  = options_.get_option_value("compress", compressionLevel_);
+  {
+    const char *temp = options_.retrieve("quantize_nsd");
+    if (temp != nullptr) {
+      quantizeNSD_ = std::strtol(temp, nullptr, 10);
+      if (!szip_ && !zlib_ && !zstd_ && !bz2_) {
+        zlib_ = true;
+      }
+    }
+  }
+
   contig_            = options_.retrieve("contiguous_decomposition") != nullptr;
   outputDecompMap_   = options_.retrieve("output_decomp_map") != nullptr;
   outputDecompField_ = options_.retrieve("output_decomp_field") != nullptr;
+#if USE_ZOLTAN
+  ignore_x_ = options_.retrieve("ignore_x") != nullptr;
+  ignore_y_ = options_.retrieve("ignore_y") != nullptr;
+  ignore_z_ = options_.retrieve("ignore_z") != nullptr;
+#endif
 
   if (outputDecompMap_ && outputDecompField_) {
     fmt::print(
@@ -398,10 +478,7 @@ void SystemInterface::parse_step_option(const char *tokens)
     if (strchr(tokens, ':') != nullptr) {
       // The string contains a separator
 
-      int vals[3];
-      vals[0] = stepMin_;
-      vals[1] = stepMax_;
-      vals[2] = stepInterval_;
+      std::array<int, 3> vals = {stepMin_, stepMax_, stepInterval_};
 
       int j = 0;
       for (int &val : vals) {

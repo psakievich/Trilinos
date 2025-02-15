@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov),
-//                    Mauro Perego  (mperego@sandia.gov), or
-//                    Nate Roberts  (nvrober@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file   CellGeometryTests.cpp
@@ -401,6 +367,29 @@ namespace
     TEST_EQUALITY(8,         cellGeometry.numNodesPerCell());
   }
 
+  TEUCHOS_UNIT_TEST( CellGeometry, Jacobian_Uniform_Pyramids )
+  {
+    const int spaceDim = 3;
+    const double relTol=1e-13;
+    const double absTol=1e-13;
+    
+    using PointScalar = double;
+    using DeviceType = DefaultTestDeviceType;
+    
+    Kokkos::Array<PointScalar,spaceDim> origin{0,0,0};
+    Kokkos::Array<PointScalar,spaceDim> domainExtents{1,2,4};
+    Kokkos::Array<int,spaceDim> gridCellCounts{2,4,2};
+    
+    using CellGeometryType = CellGeometry<PointScalar, spaceDim, DeviceType>;
+    
+    std::vector<CellGeometryType::SubdivisionStrategy> subdivisionStrategies = {CellGeometryType::SIX_PYRAMIDS};
+    for (const auto & subdivisionStrategy : subdivisionStrategies)
+    {
+      CellGeometry<PointScalar, spaceDim, DeviceType> cellGeometry(origin, domainExtents, gridCellCounts, subdivisionStrategy);
+      testJacobiansAgree(cellGeometry, relTol, absTol, out, success);
+    }
+  }
+
   TEUCHOS_UNIT_TEST( CellGeometry, Jacobian_Uniform_Quads )
   {
     const int spaceDim = 2;
@@ -469,7 +458,7 @@ namespace
     using PointScalar = double;
     using DeviceType = DefaultTestDeviceType;
     
-    Kokkos::Array<PointScalar,spaceDim> origin{0,0};
+    Kokkos::Array<PointScalar,spaceDim> origin{0,0,0};
     Kokkos::Array<PointScalar,spaceDim> domainExtents{1,2,4};
     Kokkos::Array<int,spaceDim> gridCellCounts{2,4,2};
     
@@ -511,6 +500,32 @@ namespace
     const int polyOrder = 1; // this just affects the number of quadrature points
     const int meshWidth = 2;
     testJacobians<spaceDim,PointScalar>(polyOrder, meshWidth, out, success);
+  }
+
+  TEUCHOS_UNIT_TEST( CellGeometry, Jacobian_Linear_Pyramids )
+  {
+    const int spaceDim = 3;
+    const double relTol=1e-13;
+    const double absTol=1e-13;
+    
+    using PointScalar = double;
+    using DeviceType = DefaultTestDeviceType;
+    
+    Kokkos::Array<PointScalar,spaceDim> origin{0,0,0};
+    Kokkos::Array<PointScalar,spaceDim> domainExtents{1,2,4};
+    Kokkos::Array<int,spaceDim> gridCellCounts{2,4,2};
+    CellGeometry<PointScalar, spaceDim, DeviceType>::SubdivisionStrategy subdivisionStrategy = CellGeometry<PointScalar, spaceDim, DeviceType>::SIX_PYRAMIDS;
+    CellGeometry<PointScalar, spaceDim, DeviceType> uniformGridCellGeometry(origin, domainExtents, gridCellCounts, subdivisionStrategy);
+    
+    const std::vector<bool> copyAffineValues {false, true};
+    
+    for (auto copyAffine : copyAffineValues)
+    {
+      if (copyAffine) out << "testing affine path.\n";
+      else            out << "testing non-affine path (with affine geometry).\n";
+      auto nodalCellGeometry = getNodalCellGeometry(uniformGridCellGeometry,copyAffine);
+      testJacobiansAgree(nodalCellGeometry, relTol, absTol, out, success);
+    }
   }
 
   TEUCHOS_UNIT_TEST( CellGeometry, Jacobian_Linear_Quads )
@@ -596,6 +611,29 @@ namespace
         testJacobiansAgree(nodalCellGeometry, relTol, absTol, out, success);
       }
     }
+  }
+
+  TEUCHOS_UNIT_TEST( CellGeometry, Nodes_Uniform_Pyramids )
+  {
+    const int spaceDim = 3;
+    using PointScalar = double;
+    using HostDeviceType = Kokkos::HostSpace::device_type;
+    
+    Kokkos::Array<PointScalar,spaceDim> origin{0,0,0};
+    Kokkos::Array<PointScalar,spaceDim> domainExtents{1,1,1};
+    Kokkos::Array<int,spaceDim> gridCellCounts{1,1,1};
+    
+    using CellGeometryType = CellGeometry<PointScalar, spaceDim, HostDeviceType>;
+    CellGeometryType cellGeometry(origin, domainExtents, gridCellCounts, CellGeometryType::SIX_PYRAMIDS);
+    
+    ordinal_type numGridCells = gridCellCounts[0] * gridCellCounts[1] * gridCellCounts[2];
+    ordinal_type expectedNumCells = 6 * numGridCells;
+    ordinal_type numCells = cellGeometry.numCells();
+    TEST_EQUALITY(numCells, expectedNumCells);
+    
+//    ordinal_type expectedNumNodes = 9; // 1 interior vertex, 8 vertices for the hexahedron
+    // TODO: check global node numbers.  We expect to have interior nodes listed first (there's just one per grid cell), followed by a Cartesian numbering of the vertices with x as the fastest-moving index.
+    
   }
 
 //TODO: write this test, using ProjectedGeometry.

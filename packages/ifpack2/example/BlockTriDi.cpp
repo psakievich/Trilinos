@@ -1,3 +1,11 @@
+// @HEADER
+// *****************************************************************************
+//       Ifpack2: Templated Object-Oriented Algebraic Preconditioner Package
+//
+// Copyright 2009 NTESS and the Ifpack2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 #include <Ifpack2_Factory.hpp>
 #include <Ifpack2_BlockTriDiContainer.hpp>
 #include <BelosTpetraAdapter.hpp>
@@ -18,7 +26,7 @@ namespace { // (anonymous)
 
 // Values of command-line arguments.
 struct CmdLineArgs {
-  CmdLineArgs ():blockSize(-1),numIters(10),tol(1e-12),nx(172),ny(-1),nz(-1),mx(1),my(1),mz(1),sublinesPerLine(1),useStackedTimer(false),overlapCommAndComp(false){}
+  CmdLineArgs ():blockSize(-1),numIters(10),numRepeats(1),tol(1e-12),nx(172),ny(-1),nz(-1),mx(1),my(1),mz(1),sublinesPerLine(1),sublinesPerLineSchur(1),useStackedTimer(false),usePointMatrix(false),overlapCommAndComp(false),useSingleFile(false),skipLineFile(false){}
 
   std::string mapFilename;
   std::string matrixFilename;
@@ -26,6 +34,7 @@ struct CmdLineArgs {
   std::string lineFilename;
   int blockSize;
   int numIters;
+  int numRepeats;
   double tol;
   int nx;
   int ny;
@@ -34,8 +43,12 @@ struct CmdLineArgs {
   int my;
   int mz;
   int sublinesPerLine;
+  int sublinesPerLineSchur;
   bool useStackedTimer;
+  bool usePointMatrix;
   bool overlapCommAndComp;
+  bool useSingleFile;
+  bool skipLineFile;
   std::string problemName;
   std::string matrixType;
 };
@@ -54,7 +67,8 @@ getCmdLineArgs (CmdLineArgs& args, int argc, char* argv[])
   cmdp.setOption ("lineFilename", &args.lineFilename, "Name of Matrix Market "
                   "file with the lineid of each node listed");
   cmdp.setOption ("blockSize", &args.blockSize, "Size of block to use");
-  cmdp.setOption ("numIters", &args.numIters, "Number of iterations");
+  cmdp.setOption ("numIters", &args.numIters, "Number of iterations per Solve call");
+  cmdp.setOption ("numRepeats", &args.numRepeats, "Number of times to run preconditioner compute & solve.");
   cmdp.setOption ("tol", &args.tol, "Solver tolerance");
   cmdp.setOption ("nx", &args.nx, "If using inline meshing, number of nodes in the x direction");
   cmdp.setOption ("ny", &args.ny, "If using inline meshing, number of nodes in the y direction");
@@ -65,10 +79,17 @@ getCmdLineArgs (CmdLineArgs& args, int argc, char* argv[])
   cmdp.setOption ("sublinesPerLine", &args.sublinesPerLine, "If using inline meshing, number of sublines per mesh x line. If set to -1 the block Jacobi algorithm is used.");
   cmdp.setOption ("withStackedTimer", "withoutStackedTimer", &args.useStackedTimer,
       "Whether to run with a StackedTimer and print the timer tree at the end (and try to output Watchr report)");
+  cmdp.setOption ("withPointMatrix", "withoutPointMatrix", &args.usePointMatrix,
+      "Whether to run with a point matrix");
   cmdp.setOption ("withOverlapCommAndComp", "withoutOverlapCommAndComp", &args.overlapCommAndComp,
-		  "Whether to run with overlapCommAndComp)");
+		  "Whether to run with overlapCommAndComp");
+  cmdp.setOption ("useSingeFile", "useOneFilePerRank", &args.useSingleFile,
+		  "Whether to read the matrix from one file or one file per rank");
+  cmdp.setOption ("skipLineFile", "readLineFile", &args.skipLineFile,
+		  "Whether to skip the lineFile and use a block Jacobi");
   cmdp.setOption("problemName", &args.problemName, "Human-readable problem name for Watchr plot");
   cmdp.setOption("matrixType", &args.matrixType, "matrixType");
+  cmdp.setOption("sublinesPerLineSchur", &args.sublinesPerLineSchur, "sublinesPerLineSchur");
   auto result = cmdp.parse (argc, argv);
   return result == Teuchos::CommandLineProcessor::PARSE_SUCCESSFUL;
 }
@@ -275,7 +296,6 @@ main (int argc, char* argv[])
   using std::cerr;
   using std::endl;
   typedef Tpetra::CrsMatrix<> crs_matrix_type;
-  typedef Tpetra::BlockCrsMatrix<> block_crs_matrix_type;
   typedef Tpetra::Map<> map_type;
   typedef Tpetra::MultiVector<> MV;
   typedef Tpetra::RowMatrix<> row_matrix_type;
@@ -310,7 +330,10 @@ main (int argc, char* argv[])
   RCP<Time> totalTime;
   RCP<Teuchos::TimeMonitor> totalTimeMon;
   RCP<Time> precSetupTime = Teuchos::TimeMonitor::getNewTimer ("Preconditioner setup");
+  RCP<Time> precComputeTime = Teuchos::TimeMonitor::getNewTimer ("Preconditioner compute");
   RCP<Time> solveTime = Teuchos::TimeMonitor::getNewTimer ("Solve");
+  RCP<Time> normTime = Teuchos::TimeMonitor::getNewTimer ("Norm");
+  RCP<Time> warmupMatrixApplyTime = Teuchos::TimeMonitor::getNewTimer ("Preposition of the matrix on device");
   if(!args.useStackedTimer)
   {
     totalTime = Teuchos::TimeMonitor::getNewTimer ("Total");
@@ -341,7 +364,7 @@ main (int argc, char* argv[])
       if (rank0) cerr << "Must specify filename for loading right-hand side(s)!" << endl;
       return EXIT_FAILURE;
     }
-    if (args.lineFilename == "") {
+    if (!args.skipLineFile && args.lineFilename == "") {
       if (rank0) cerr << "Must specify filename for loading line information!" << endl;
       return EXIT_FAILURE;    
     }
@@ -353,11 +376,17 @@ main (int argc, char* argv[])
 
   // Read sparse matrix A from Matrix Market file.
   RCP<crs_matrix_type> A;
-  RCP<block_crs_matrix_type> Ablock;
+  RCP<row_matrix_type> Ablock;
   RCP<MV> B,X;
   RCP<IV> line_info;
 #if defined(HAVE_IFPACK2_XPETRA)
   if(args.matrixFilename == "") {
+    RCP<Time> matrixCreationTime = Teuchos::TimeMonitor::getNewTimer ("Create inline matrix");
+    Teuchos::TimeMonitor matrixCreationTimeMon (*matrixCreationTime);
+    if (args.usePointMatrix) {
+      std::string msg = "usePointMatrix with inline matrix is not yet implemented";
+      throw std::runtime_error(msg);      
+    }
     // matrix
     Teuchos::ParameterList plist;
     if(args.matrixType == "") {
@@ -442,6 +471,8 @@ main (int argc, char* argv[])
   else
 #endif 
     {
+      RCP<Time> matrixReadingTime = Teuchos::TimeMonitor::getNewTimer ("Reading matrix input files");
+      Teuchos::TimeMonitor matrixReadingTimeMon (*matrixReadingTime);
       // Read map
       if(rank0) std::cout<<"Reading map file..."<<std::endl;
       RCP<const map_type> point_map = reader_type::readMapFile(args.mapFilename, comm);
@@ -456,7 +487,7 @@ main (int argc, char* argv[])
       // Read matrix
       if(rank0) std::cout<<"Reading matrix (as point)..."<<std::endl;
       RCP<const map_type> dummy_col_map;
-      if (comm->getSize() == 1)
+      if (args.useSingleFile || comm->getSize() == 1)
         A = reader_type::readSparseFile(args.matrixFilename, point_map, dummy_col_map, point_map, point_map);
       else {
         if(rank0) std::cout<<"Using per-rank reader..."<<std::endl;
@@ -485,20 +516,33 @@ main (int argc, char* argv[])
       
       // Convert Matrix to Block
       if(rank0) std::cout<<"Converting A from point to block..."<<std::endl;
-      Ablock = Tpetra::convertToBlockCrsMatrix<SC,LO,GO,NO>(*A, args.blockSize);
+      {
+        RCP<Time> matrixConversionTime = Teuchos::TimeMonitor::getNewTimer ("Matrix conversion");
+        Teuchos::TimeMonitor matrixConversionTimeMon (*matrixConversionTime);
+        Ablock = Tpetra::convertToBlockCrsMatrix<SC,LO,GO,NO>(*A, args.blockSize);
+      }
 
 
-      // Read line information vector
-      // We assume the vector contains the local line ids for each node
-      if(rank0) std::cout<<"Reading line info file..."<<std::endl;
-      RCP<const map_type> block_map = Ablock->getRowMap();
-      line_info = LO_reader_type::readVectorFile(args.lineFilename, comm, block_map);
-      if (line_info.is_null ()) {
-        if (rank0) {
-          cerr << "Failed to load line_info from file \""
-               << args.lineFilename << "\"!" << endl;
+      if(args.skipLineFile) {
+        line_info = rcp(new IV(Ablock->getRowMap()));
+        auto line_ids = line_info->get1dViewNonConst();
+        for(LO i=0; i<(LO)line_ids.size(); i++) {
+          line_ids[i] = i;
         }
-        return EXIT_FAILURE;
+      }
+      else {
+        // Read line information vector
+        // We assume the vector contains the local line ids for each node
+        if(rank0) std::cout<<"Reading line info file..."<<std::endl;
+        RCP<const map_type> block_map = Ablock->getRowMap();
+        line_info = LO_reader_type::readVectorFile(args.lineFilename, comm, block_map);
+        if (line_info.is_null ()) {
+          if (rank0) {
+            cerr << "Failed to load line_info from file \""
+                << args.lineFilename << "\"!" << endl;
+          }
+          return EXIT_FAILURE;
+        }
       }
 
     }
@@ -510,12 +554,6 @@ main (int argc, char* argv[])
     size_t numRows = Ablock->getRowMap()->getGlobalNumElements();
     std::cout<<"Block Matrix has "<<numDomains<<" domains and "<<numRows
              << " rows with an implied block size of "<< ((double)numDomains / (double)numRows)<<std::endl;
-  }
-
-  if(args.useStackedTimer)
-  {
-    stackedTimer = rcp(new StackedTimer("BlockTriDiagonalSolver"));
-    Teuchos::TimeMonitor::setStackedTimer(stackedTimer);
   }
 
   // Initial Guess
@@ -560,8 +598,16 @@ main (int argc, char* argv[])
 
   // Preposition the matrix on device by letting a matvec ensure a transfer
   {
+    Teuchos::TimeMonitor warmupMatrixApplyTimeMon (*warmupMatrixApplyTime);
+
     RCP<MV> temp = rcp(new MV(Ablock->getRangeMap(),1));
     Ablock->apply(*X,*temp);
+  }
+
+  if(args.useStackedTimer)
+  {
+    stackedTimer = rcp(new StackedTimer("BlockTriDiagonalSolver"));
+    Teuchos::TimeMonitor::setStackedTimer(stackedTimer);
   }
 
   // Create Ifpack2 preconditioner.
@@ -570,13 +616,13 @@ main (int argc, char* argv[])
 
   {
     Teuchos::TimeMonitor precSetupTimeMon (*precSetupTime);
-    precond = rcp(new BTDC(Ablock,parts,args.overlapCommAndComp));
+    if(args.usePointMatrix)
+      precond = rcp(new BTDC(A,parts,args.sublinesPerLineSchur,args.overlapCommAndComp, false, args.blockSize));
+    else
+      precond = rcp(new BTDC(Ablock,parts,args.sublinesPerLineSchur,args.overlapCommAndComp));
 
     if(rank0) std::cout<<"Initializing preconditioner..."<<std::endl;
     precond->initialize ();
-
-    if(rank0) std::cout<<"Computing preconditioner..."<<std::endl;
-    precond->compute ();
     Kokkos::DefaultExecutionSpace().fence();
   }
 
@@ -589,27 +635,40 @@ main (int argc, char* argv[])
  
 
   // Solve
-  if(rank0) std::cout<<"Running solve..."<<std::endl;
-  int nits;
+  for(int repeat=0; repeat < args.numRepeats; ++repeat)
   {
-    Teuchos::TimeMonitor solveTimeMon (*solveTime);
-    nits = precond->applyInverseJacobi(*B,*X,ap); 
-    Kokkos::DefaultExecutionSpace().fence(); 
-  }
+    if(rank0) std::cout<<"Computing preconditioner..."<<std::endl;
+    {
+      Teuchos::TimeMonitor precComputeTimeMon (*precComputeTime);
+      precond->compute ();
+      Kokkos::DefaultExecutionSpace().fence();
+    }
 
-  auto norm0 = precond->getNorms0();
-  auto normF = precond->getNormsFinal();
+    if(rank0) std::cout<<"Running solve..."<<std::endl;
+    int nits;
+    {
+      Teuchos::TimeMonitor solveTimeMon (*solveTime);
+      nits = precond->applyInverseJacobi(*B,*X,ap);
+      Kokkos::DefaultExecutionSpace().fence();
+    }
 
-  if(rank0) {
-    std::cout<<"Solver run for "<<nits<<" iterations (asked for "<<args.numIters<<") with residual reduction "<<normF/norm0<<std::endl;
-    std::cout<<"  Norm0 = "<<norm0<<" NormF = "<<normF<<std::endl;
-  }
+    auto norm0 = precond->getNorms0();
+    auto normF = precond->getNormsFinal();
 
+    if(rank0) {
+      std::cout<<"Solver run for "<<nits<<" iterations (asked for "<<args.numIters<<") with residual reduction "<<normF/norm0<<std::endl;
+      std::cout<<"  Norm0 = "<<norm0<<" NormF = "<<normF<<std::endl;
+    }
 
-  X->norm2(normx);
-  B->norm2(normb);
-  if(rank0) {
-    std::cout<<"Final norm X = "<<normx[0]<<" norm B = "<<normb[0]<<std::endl;
+    {
+      Teuchos::TimeMonitor normTimeMon (*normTime);
+      X->norm2(normx);
+      B->norm2(normb);
+      Kokkos::DefaultExecutionSpace().fence();
+    }
+    if(rank0) {
+      std::cout<<"Final norm X = "<<normx[0]<<" norm B = "<<normb[0]<<std::endl;
+    }
   }
 
 

@@ -26,6 +26,7 @@ TRIBITS_INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 APPEND_SET(HEADERS
   NOX.H
   NOX_Common.H
+  NOX_Exceptions.H
   )
 
 # Abstract
@@ -189,6 +190,7 @@ APPEND_SET(HEADERS
   NOX_Observer_Log.hpp
   NOX_Observer_Print.hpp
   NOX_Assert.H
+  NOX_GlobalComm.H
   )
 APPEND_SET(SOURCES
   NOX_Utils.C
@@ -237,6 +239,8 @@ IF(NOX_ENABLE_ABSTRACT_IMPLEMENTATION_THYRA)
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_MatrixFree_ModelEvaluatorDecorator.hpp
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_LineSearch_SafeguardedDirection.hpp
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_TOpEleWiseMinSwap.hpp
+    ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Observer_ReusePreconditioner.hpp
+    ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Observer_ReusePreconditionerFactory.hpp
   )
   APPEND_SET(SOURCES
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Thyra_Vector.C
@@ -247,6 +251,8 @@ IF(NOX_ENABLE_ABSTRACT_IMPLEMENTATION_THYRA)
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_MeritFunction_Weighted.cpp
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Solver_PseudoTransient.cpp
     ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_LineSearch_SafeguardedDirection.cpp
+    ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Observer_ReusePreconditioner.cpp
+    ${PACKAGE_SOURCE_DIR}/src-thyra/NOX_Observer_ReusePreconditionerFactory.cpp
   )
 ENDIF()
 

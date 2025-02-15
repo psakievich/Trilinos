@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -43,7 +43,7 @@ static int ex_put_var_names_int(int exoid, char *tname, char *dnumvar, char *vna
                "ERROR: failed to locate number of %s variables in file id %d", tname, exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
     }
-    return (EX_FATAL);
+    return EX_FATAL;
   }
 
   if ((status = nc_inq_varid(exoid, vnames, varid)) != NC_NOERR) {
@@ -57,9 +57,9 @@ static int ex_put_var_names_int(int exoid, char *tname, char *dnumvar, char *vna
                tname, exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
     }
-    return (EX_FATAL);
+    return EX_FATAL;
   }
-  return (EX_NOERR);
+  return EX_NOERR;
 }
 
 /*!
@@ -129,7 +129,7 @@ int ex_put_variable_names(int exoid, ex_entity_type obj_type, int num_vars, char
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -178,7 +178,7 @@ int ex_put_variable_names(int exoid, ex_entity_type obj_type, int num_vars, char
   }
 
   /* write EXODUS variable names */
-  status = ex__put_names(exoid, varid, num_vars, var_names, obj_type, "variable", __func__);
+  status = exi_put_names(exoid, varid, num_vars, var_names, obj_type, "variable", __func__);
 
   EX_FUNC_LEAVE(status);
 }

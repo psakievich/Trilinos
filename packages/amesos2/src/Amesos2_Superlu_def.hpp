@@ -1,44 +1,10 @@
 // @HEADER
-//
-// ***********************************************************************
-//
+// *****************************************************************************
 //           Amesos2: Templated Direct Sparse Solver Package
-//                  Copyright 2011 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /**
@@ -331,7 +297,8 @@ Superlu<Matrix,Vector>::numericFactorization_impl()
   if( same_symbolic_ ) data_.options.Fact = SLU::SamePattern_SameRowPerm;
 
   int info = 0;
-  if ( this->root_ ){
+  int info2 = 0; // for Equil
+  if ( this->root_ ) {
 
 #ifdef HAVE_AMESOS2_DEBUG
     TEUCHOS_TEST_FOR_EXCEPTION( data_.A.ncol != as<int>(this->globalNumCols_),
@@ -344,108 +311,117 @@ Superlu<Matrix,Vector>::numericFactorization_impl()
 
     if( data_.options.Equil == SLU::YES ){
       magnitude_type rowcnd, colcnd, amax;
-      int info2 = 0;
 
       // calculate row and column scalings
       function_map::gsequ(&(data_.A), data_.R.data(),
                           data_.C.data(), &rowcnd, &colcnd,
                           &amax, &info2);
-      TEUCHOS_TEST_FOR_EXCEPTION
-        (info2 < 0, std::runtime_error,
-         "SuperLU's gsequ function returned with status " << info2 << " < 0."
-         "  This means that argument " << (-info2) << " given to the function"
-         " had an illegal value.");
-      if (info2 > 0) {
-        if (info2 <= data_.A.nrow) {
-          TEUCHOS_TEST_FOR_EXCEPTION
-            (true, std::runtime_error, "SuperLU's gsequ function returned with "
-             "info = " << info2 << " > 0, and info <= A.nrow = " << data_.A.nrow
-             << ".  This means that row " << info2 << " of A is exactly zero.");
-        }
-        else if (info2 > data_.A.ncol) {
-          TEUCHOS_TEST_FOR_EXCEPTION
-            (true, std::runtime_error, "SuperLU's gsequ function returned with "
-             "info = " << info2 << " > 0, and info > A.ncol = " << data_.A.ncol
-             << ".  This means that column " << (info2 - data_.A.nrow) << " of "
-             "A is exactly zero.");
-        }
-        else {
-          TEUCHOS_TEST_FOR_EXCEPTION
-            (true, std::runtime_error, "SuperLU's gsequ function returned "
-             "with info = " << info2 << " > 0, but its value is not in the "
-             "range permitted by the documentation.  This should never happen "
-             "(it appears to be SuperLU's fault).");
-        }
+
+      if (info2 == 0) {
+        // apply row and column scalings if necessary
+        function_map::laqgs(&(data_.A), data_.R.data(),
+                            data_.C.data(), rowcnd, colcnd,
+                            amax, &(data_.equed));
+
+        // check what types of equilibration was actually done
+        data_.rowequ = (data_.equed == 'R') || (data_.equed == 'B');
+        data_.colequ = (data_.equed == 'C') || (data_.equed == 'B');
       }
-
-      // apply row and column scalings if necessary
-      function_map::laqgs(&(data_.A), data_.R.data(),
-                          data_.C.data(), rowcnd, colcnd,
-                          amax, &(data_.equed));
-
-      // check what types of equilibration was actually done
-      data_.rowequ = (data_.equed == 'R') || (data_.equed == 'B');
-      data_.colequ = (data_.equed == 'C') || (data_.equed == 'B');
     }
 
-    // Apply the column permutation computed in preOrdering.  Place the
-    // column-permuted matrix in AC
-    SLU::sp_preorder(&(data_.options), &(data_.A), data_.perm_c.data(),
-                     data_.etree.data(), &(data_.AC));
+    if (info2 == 0) {
+      // Apply the column permutation computed in preOrdering.  Place the
+      // column-permuted matrix in AC
+      SLU::sp_preorder(&(data_.options), &(data_.A), data_.perm_c.data(),
+                       data_.etree.data(), &(data_.AC));
 
-    { // Do factorization
+      { // Do factorization
 #ifdef HAVE_AMESOS2_TIMERS
-      Teuchos::TimeMonitor numFactTimer(this->timers_.numFactTime_);
+        Teuchos::TimeMonitor numFactTimer(this->timers_.numFactTime_);
 #endif
 
 #ifdef HAVE_AMESOS2_VERBOSE_DEBUG
-      std::cout << "Superlu:: Before numeric factorization" << std::endl;
-      std::cout << "nzvals_ : " << nzvals_.toString() << std::endl;
-      std::cout << "rowind_ : " << rowind_.toString() << std::endl;
-      std::cout << "colptr_ : " << colptr_.toString() << std::endl;
+        std::cout << "Superlu:: Before numeric factorization" << std::endl;
+        std::cout << "nzvals_ : " << nzvals_.toString() << std::endl;
+        std::cout << "rowind_ : " << rowind_.toString() << std::endl;
+        std::cout << "colptr_ : " << colptr_.toString() << std::endl;
 #endif
 
-      if(ILU_Flag_==false) {
-        function_map::gstrf(&(data_.options), &(data_.AC),
-            data_.relax, data_.panel_size, data_.etree.data(),
-            NULL, 0, data_.perm_c.data(), data_.perm_r.data(),
-            &(data_.L), &(data_.U), 
+        if(ILU_Flag_==false) {
+          function_map::gstrf(&(data_.options), &(data_.AC),
+              data_.relax, data_.panel_size, data_.etree.data(),
+              NULL, 0, data_.perm_c.data(), data_.perm_r.data(),
+              &(data_.L), &(data_.U), 
 #ifdef HAVE_AMESOS2_SUPERLU5_API
-            &(data_.lu), 
+              &(data_.lu), 
 #endif
-            &(data_.stat), &info);
-      }
-      else {
-        function_map::gsitrf(&(data_.options), &(data_.AC),
-            data_.relax, data_.panel_size, data_.etree.data(),
-            NULL, 0, data_.perm_c.data(), data_.perm_r.data(),
-            &(data_.L), &(data_.U), 
+              &(data_.stat), &info);
+        }
+        else {
+          function_map::gsitrf(&(data_.options), &(data_.AC),
+              data_.relax, data_.panel_size, data_.etree.data(),
+              NULL, 0, data_.perm_c.data(), data_.perm_r.data(),
+              &(data_.L), &(data_.U), 
 #ifdef HAVE_AMESOS2_SUPERLU5_API
-            &(data_.lu), 
+              &(data_.lu), 
 #endif
-            &(data_.stat), &info);
-      }
-
-      if (data_.options.ConditionNumber == SLU::YES) {
-        char norm[1];
-        if (data_.options.Trans == SLU::NOTRANS) {
-            *(unsigned char *)norm = '1';
-        } else {
-            *(unsigned char *)norm = 'I';
+              &(data_.stat), &info);
         }
 
-        data_.anorm = function_map::langs(norm, &(data_.A));
-        function_map::gscon(norm, &(data_.L), &(data_.U),
-                            data_.anorm, &(data_.rcond),
-                            &(data_.stat), &info);
+        if (data_.options.ConditionNumber == SLU::YES) {
+          char norm[1];
+          if (data_.options.Trans == SLU::NOTRANS) {
+            *(unsigned char *)norm = '1';
+          } else {
+            *(unsigned char *)norm = 'I';
+          }
+
+          data_.anorm = function_map::langs(norm, &(data_.A));
+          function_map::gscon(norm, &(data_.L), &(data_.U),
+                              data_.anorm, &(data_.rcond),
+                              &(data_.stat), &info);
+        }
+      }
+      // Cleanup. AC data will be alloc'd again for next factorization (if at all)
+      SLU::Destroy_CompCol_Permuted( &(data_.AC) );
+
+      // Set the number of non-zero values in the L and U factors
+      this->setNnzLU( as<size_t>(((SLU::SCformat*)data_.L.Store)->nnz +
+                                 ((SLU::NCformat*)data_.U.Store)->nnz) );
+    } // end of if (info2 == 0)
+  } // end of if (this->root)
+
+  if( data_.options.Equil == SLU::YES ) { // error check for Equil
+    /* All processes should have the same error code */
+    Teuchos::broadcast(*(this->getComm()), 0, &info2);
+
+    TEUCHOS_TEST_FOR_EXCEPTION
+      (info2 < 0, std::runtime_error,
+       "SuperLU's gsequ function returned with status " << info2 << " < 0."
+       "  This means that argument " << (-info2) << " given to the function"
+       " had an illegal value.");
+    if (info2 > 0) {
+      if (info2 <= data_.A.nrow) {
+        TEUCHOS_TEST_FOR_EXCEPTION
+          (true, std::runtime_error, "SuperLU's gsequ function returned with "
+           "info = " << info2 << " > 0, and info <= A.nrow = " << data_.A.nrow
+           << ".  This means that row " << info2 << " of A is exactly zero.");
+      }
+      else if (info2 > data_.A.ncol) {
+        TEUCHOS_TEST_FOR_EXCEPTION
+          (true, std::runtime_error, "SuperLU's gsequ function returned with "
+           "info = " << info2 << " > 0, and info > A.ncol = " << data_.A.ncol
+           << ".  This means that column " << (info2 - data_.A.nrow) << " of "
+           "A is exactly zero.");
+      }
+      else {
+        TEUCHOS_TEST_FOR_EXCEPTION
+          (true, std::runtime_error, "SuperLU's gsequ function returned "
+           "with info = " << info2 << " > 0, but its value is not in the "
+           "range permitted by the documentation.  This should never happen "
+           "(it appears to be SuperLU's fault).");
       }
     }
-    // Cleanup. AC data will be alloc'd again for next factorization (if at all)
-    SLU::Destroy_CompCol_Permuted( &(data_.AC) );
-
-    // Set the number of non-zero values in the L and U factors
-    this->setNnzLU( as<size_t>(((SLU::SCformat*)data_.L.Store)->nnz +
-                               ((SLU::NCformat*)data_.U.Store)->nnz) );
   }
 
   /* All processes should have the same error code */
@@ -993,24 +969,14 @@ Superlu<Matrix,Vector>::loadA_impl(EPhase current_phase)
                         std::runtime_error,
                         "Row and column maps have different indexbase ");
 
-    if ( is_contiguous_ == true ) {
-      Util::get_ccs_helper_kokkos_view<
-        MatrixAdapter<Matrix>,host_value_type_array,host_ordinal_type_array,
-          host_size_type_array>::do_get(this->matrixA_.ptr(),
-            host_nzvals_view_, host_rows_view_,
-            host_col_ptr_view_, nnz_ret, ROOTED,
-            ARBITRARY,
-            this->rowIndexBase_);
-    }
-    else {
-      Util::get_ccs_helper_kokkos_view<
-        MatrixAdapter<Matrix>,host_value_type_array,host_ordinal_type_array,
-          host_size_type_array>::do_get(this->matrixA_.ptr(),
-            host_nzvals_view_, host_rows_view_,
-            host_col_ptr_view_, nnz_ret, CONTIGUOUS_AND_ROOTED,
-            ARBITRARY,
-            this->rowIndexBase_);
-    }
+    Util::get_ccs_helper_kokkos_view<
+      MatrixAdapter<Matrix>,host_value_type_array,host_ordinal_type_array,
+        host_size_type_array>::do_get(this->matrixA_.ptr(),
+          host_nzvals_view_, host_rows_view_,
+          host_col_ptr_view_, nnz_ret,
+          (is_contiguous_ == true) ? ROOTED : CONTIGUOUS_AND_ROOTED,
+          ARBITRARY,
+          this->rowIndexBase_);
   }
 
   // Get the SLU data type for this type of matrix

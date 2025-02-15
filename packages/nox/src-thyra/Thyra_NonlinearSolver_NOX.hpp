@@ -1,49 +1,11 @@
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //            NOX: An Object-Oriented Nonlinear Solver Package
-//                 Copyright (2002) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Roger Pawlowski (rppawlo@sandia.gov) or
-// Eric Phipps (etphipp@sandia.gov), Sandia National Laboratories.
-// ************************************************************************
-//  CVS Information
-//  $Source$
-//  $Author$
-//  $Date$
-//  $Revision$
-// ************************************************************************
-//@HEADER
+// Copyright 2002 NTESS and the NOX contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef THYRA_NONLINEARSOLVER_NOX
 #define THYRA_NONLINEARSOLVER_NOX
@@ -54,6 +16,9 @@
 
 namespace NOX {
   class SolverManager;
+  namespace Abstract {
+    class Group;
+  }
   namespace Thyra {
     class Group;
   }
@@ -151,7 +116,7 @@ public:
 
       \param[in] group The nox group with the initial guess
    */
-  void setGroup(const Teuchos::RCP<NOX::Thyra::Group>& group);
+  void setGroup(const Teuchos::RCP<NOX::Abstract::Group>& group);
 
   RCP<const NOX::Solver::Generic> getNOXSolver() const;
 
@@ -173,6 +138,22 @@ private:
   */
   void setupRowSumScalingObjects();
 
+  // Returns the underlying NOX::Thyra::Group. First tries to dynamic
+  // cast the group input param to a thyra group. If that fails, it
+  // will try to pull out a nested group and recursively call this
+  // function to eventually get a thyra group. This is needed when we
+  // use groups that use a nesting approach as opposed to inheritance
+  // (LOCA does this alot).
+  Teuchos::RCP<NOX::Thyra::Group> getThyraGroupNonConst(const Teuchos::RCP<NOX::Abstract::Group>& group);
+
+  // Returns the underlying NOX::Thyra::Group. First tries to dynamic
+  // cast the group input param to a thyra group. If that fails, it
+  // will try to pull out a nested group and recursively call this
+  // function to eventually get a thyra group. This is needed when we
+  // use groups that use a nesting approach as opposed to inheritance
+  // (LOCA does this alot).
+  Teuchos::RCP<const NOX::Thyra::Group> getThyraGroupConst(const Teuchos::RCP<const NOX::Abstract::Group>& group) const;
+
 private:
 
   RCP<Teuchos::ParameterList> param_list_;
@@ -180,7 +161,11 @@ private:
   RCP<const ModelEvaluator<double> > model_;
   ModelEvaluatorBase::InArgs<double> basePoint_;
 
-  RCP<NOX::Thyra::Group> nox_group_;
+  //! Note that this is not a thyra group. To support loca groups that
+  //! use nesting, the nox_group is the base class. When we need the
+  //! underlying Thyra group, the getThyraGroup calls can pull out the
+  //! nested group.
+  RCP<NOX::Abstract::Group> nox_group_;
   RCP<NOX::StatusTest::Generic> status_test_;
   RCP<NOX::Solver::Generic> solver_;
 
@@ -199,7 +184,9 @@ private:
   Teuchos::RCP< ::Thyra::PreconditionerFactoryBase<double>> precFactory_;
   bool updatePreconditioner_;
 
-  RCP<NOX::Thyra::Group> user_defined_nox_group_;
+  RCP<NOX::Abstract::Group> user_defined_nox_group_;
+
+  bool use_base_point_;
 };
 
 

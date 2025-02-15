@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -50,7 +50,22 @@ namespace {
 
 Excn::SystemInterface::SystemInterface(int rank) : myRank_(rank) { enroll_options(); }
 
-Excn::SystemInterface::~SystemInterface() = default;
+bool Excn::SystemInterface::remove_file_per_rank_files() const
+{
+  if (removeFilePerRankFiles_) {
+    if (partCount_ <= 0 && startPart_ == 0 && subcycle_ == -1 && cycle_ == -1) {
+      return true;
+    }
+    else {
+      fmt::print("\nNot removing the file-per-rank input files due to presence of "
+                 "start/part/subcycle options.\n\n");
+      return false;
+    }
+  }
+  else {
+    return false;
+  }
+}
 
 void Excn::SystemInterface::enroll_options()
 {
@@ -107,6 +122,10 @@ void Excn::SystemInterface::enroll_options()
                   "\t\tthey are automatically deleted unless -keep_temporary is specified.",
                   nullptr);
 
+  options_.enroll("remove_file_per_rank_files", GetLongOption::NoValue,
+                  "Remove the input file-per-rank files after they have successfully been joined.",
+                  nullptr);
+
   options_.enroll(
       "verify_valid_file", GetLongOption::NoValue,
       "Reopen the output file right after closing it to verify that the file is valid.\n"
@@ -143,9 +162,20 @@ void Excn::SystemInterface::enroll_options()
   options_.enroll("szip", GetLongOption::NoValue,
                   "Use SZip compression. [exodus only, enables netcdf-4]", nullptr);
 
-  options_.enroll("compress_data", GetLongOption::MandatoryValue,
-                  "The output database will be written using compression (netcdf-4 mode only).\n"
-                  "\t\tValue ranges from 0..9 for zlib/gzip or even values 4..32 for szip.",
+  options_.enroll("zstd", GetLongOption::NoValue,
+                  "Use Zstd compression. [exodus only, enables netcdf-4, experimental]", nullptr);
+
+  options_.enroll("bzip2", GetLongOption::NoValue,
+                  "Use Bzip2 compression. [exodus only, enables netcdf-4, experimental]", nullptr);
+
+  options_.enroll("compress", GetLongOption::MandatoryValue,
+                  "Specify the compression level to be used.  Values depend on algorithm:\n"
+                  "\t\tzlib/bzip2:  0..9\t\tszip:  even, 4..32\t\tzstd:  -131072..22",
+                  nullptr);
+
+  options_.enroll("quantize_nsd", GetLongOption::MandatoryValue,
+                  "Use the lossy quantize compression method.  Value specifies number of digits to "
+                  "retain (1..15) [exodus only]",
                   nullptr, nullptr, true);
 
   options_.enroll("append", GetLongOption::NoValue,
@@ -156,6 +186,9 @@ void Excn::SystemInterface::enroll_options()
   options_.enroll("steps", GetLongOption::MandatoryValue,
                   "Specify subset of timesteps to transfer to output file.\n"
                   "\t\tFormat is beg:end:step. 1:10:2 --> 1,3,5,7,9\n"
+                  "\t\tIf the 'beg' or 'end' is < 0, then it is the \"-Nth\" step...\n"
+                  "\t\t-1 is \"first last\" or last, -3 is \"third last\"\n"
+                  "\t\tTo copy just the last 3 steps, do: `-steps -3:-1`\n"
                   "\t\tEnter LAST for last step",
                   "1:", nullptr, true);
 
@@ -266,7 +299,7 @@ bool Excn::SystemInterface::parse_options(int argc, char **argv)
           "\t{}\n\n",
           options);
     }
-    options_.parse(options, options_.basename(*argv));
+    options_.parse(options, GetLongOption::basename(*argv));
   }
 
   int option_index = options_.parse(argc, argv);
@@ -361,26 +394,71 @@ bool Excn::SystemInterface::parse_options(int argc, char **argv)
   append_     = options_.retrieve("append") != nullptr;
   intIs64Bit_ = options_.retrieve("64") != nullptr;
 
-  if (options_.retrieve("szip") != nullptr) {
-    szip_ = true;
-    zlib_ = false;
-  }
   zlib_ = (options_.retrieve("zlib") != nullptr);
+  szip_ = (options_.retrieve("szip") != nullptr);
+  zstd_ = (options_.retrieve("zstd") != nullptr);
+  bz2_  = (options_.retrieve("bzip2") != nullptr);
 
-  if (szip_ && zlib_) {
-    fmt::print(stderr, "ERROR: Only one of 'szip' or 'zlib' can be specified.\n");
+  if ((szip_ ? 1 : 0) + (zlib_ ? 1 : 0) + (zstd_ ? 1 : 0) + (bz2_ ? 1 : 0) > 1) {
+    fmt::print(stderr,
+               "ERROR: Only one of 'szip' or 'zlib' or 'zstd' or 'bzip2' can be specified.\n");
   }
 
-  compressData_ = options_.get_option_value("compress_data", compressData_);
+  {
+    const char *temp = options_.retrieve("compress");
+    if (temp != nullptr) {
+      compressionLevel_ = std::strtol(temp, nullptr, 10);
+      if (!szip_ && !zlib_ && !zstd_ && !bz2_) {
+        zlib_ = true;
+      }
+
+      if (zlib_ || bz2_) {
+        if (compressionLevel_ < 0 || compressionLevel_ > 9) {
+          fmt::print(stderr,
+                     "ERROR: Bad compression level {}, valid value is between 0 and 9 inclusive "
+                     "for gzip/zlib compression.\n",
+                     compressionLevel_);
+          return false;
+        }
+      }
+      else if (szip_) {
+        if (compressionLevel_ % 2 != 0) {
+          fmt::print(
+              stderr,
+              "ERROR: Bad compression level {}. Must be an even value for szip compression.\n",
+              compressionLevel_);
+          return false;
+        }
+        if (compressionLevel_ < 4 || compressionLevel_ > 32) {
+          fmt::print(stderr,
+                     "ERROR: Bad compression level {}, valid value is between 4 and 32 inclusive "
+                     "for szip compression.\n",
+                     compressionLevel_);
+          return false;
+        }
+      }
+    }
+  }
+
+  {
+    const char *temp = options_.retrieve("quantize_nsd");
+    if (temp != nullptr) {
+      quantizeNSD_ = std::strtol(temp, nullptr, 10);
+      if (!szip_ && !zlib_ && !zstd_ && !bz2_) {
+        zlib_ = true;
+      }
+    }
+  }
 
   sumSharedNodes_ = options_.retrieve("sum_shared_nodes") != nullptr;
   append_         = options_.retrieve("append") != nullptr;
 
-  subcycle_        = options_.get_option_value("subcycle", subcycle_);
-  cycle_           = options_.get_option_value("cycle", cycle_);
-  subcycleJoin_    = options_.retrieve("join_subcycles") != nullptr;
-  keepTemporary_   = options_.retrieve("keep_temporary") != nullptr;
-  verifyValidFile_ = options_.retrieve("verify_valid_file") != nullptr;
+  subcycle_               = options_.get_option_value("subcycle", subcycle_);
+  cycle_                  = options_.get_option_value("cycle", cycle_);
+  subcycleJoin_           = options_.retrieve("join_subcycles") != nullptr;
+  keepTemporary_          = options_.retrieve("keep_temporary") != nullptr;
+  removeFilePerRankFiles_ = options_.retrieve("remove_file_per_rank_files") != nullptr;
+  verifyValidFile_        = options_.retrieve("verify_valid_file") != nullptr;
 
   if (options_.retrieve("map") != nullptr) {
     mapIds_ = true;
@@ -525,7 +603,11 @@ void Excn::SystemInterface::parse_step_option(const char *tokens)
   //:    <li>":Y"                 -- 1 to Y by 1</li>
   //:    <li>"::Z"                -- 1 to oo by Z</li>
   //:  </ul>
-  //: The count and step must always be >= 0
+  //: The step must always be > 0
+  //: If the 'from' or 'to' is < 0, then it is the "-Nth" step...
+  //: -1 is "first last" or last
+  //: -4 is "fourth last step"
+  //: To copy just the last 3 steps, do: `-steps -3:-1`
 
   // Break into tokens separated by ":"
 
@@ -535,34 +617,30 @@ void Excn::SystemInterface::parse_step_option(const char *tokens)
     if (strchr(tokens, ':') != nullptr) {
       // The string contains a separator
 
-      int vals[3];
-      vals[0] = stepMin_;
-      vals[1] = stepMax_;
-      vals[2] = stepInterval_;
+      std::array<int, 3> vals{stepMin_, stepMax_, stepInterval_};
 
       int j = 0;
       for (auto &val : vals) {
         // Parse 'i'th field
         char tmp_str[128];
-        ;
-        int k = 0;
 
+        int k = 0;
         while (tokens[j] != '\0' && tokens[j] != ':') {
           tmp_str[k++] = tokens[j++];
         }
 
         tmp_str[k] = '\0';
         if (strlen(tmp_str) > 0) {
-          val = strtoul(tmp_str, nullptr, 0);
+          val = strtol(tmp_str, nullptr, 0);
         }
 
         if (tokens[j++] == '\0') {
           break; // Reached end of string
         }
       }
-      stepMin_      = abs(vals[0]);
-      stepMax_      = abs(vals[1]);
-      stepInterval_ = abs(vals[2]);
+      stepMin_      = vals[0];
+      stepMax_      = vals[1];
+      stepInterval_ = abs(vals[2]); // step is always positive...
     }
     else if (str_equal("LAST", tokens)) {
       stepMin_ = stepMax_ = -1;
@@ -637,10 +715,6 @@ namespace {
   }
 
   using StringVector = std::vector<std::string>;
-  bool string_id_sort(const std::pair<std::string, int> &t1, const std::pair<std::string, int> &t2)
-  {
-    return t1.first < t2.first || (!(t2.first < t1.first) && t1.second < t2.second);
-  }
 
   void parse_variable_names(const char *tokens, Excn::StringIdVector *variable_list)
   {
@@ -663,19 +737,17 @@ namespace {
         StringVector name_id  = SLIB::tokenize(*I, ":");
         std::string  var_name = LowerCase(name_id[0]);
         if (name_id.size() == 1) {
-          (*variable_list).push_back(std::make_pair(var_name, 0));
+          (*variable_list).emplace_back(var_name, 0);
         }
         else {
           for (size_t i = 1; i < name_id.size(); i++) {
             // Convert string to integer...
             int id = std::stoi(name_id[i]);
-            (*variable_list).push_back(std::make_pair(var_name, id));
+            (*variable_list).emplace_back(var_name, id);
           }
         }
         ++I;
       }
-      // Sort the list...
-      std::sort(variable_list->begin(), variable_list->end(), string_id_sort);
     }
   }
 

@@ -1,44 +1,10 @@
 // @HEADER
+// *****************************************************************************
+//           Amesos2: Templated Direct Sparse Solver Package
 //
-// ***********************************************************************
-//
-//           Amesos2: Templated Direct Sparse Solver Package 
-//                  Copyright 2011 Sandia Corporation
-//
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /**
@@ -163,7 +129,7 @@ namespace Amesos2 {
      * \return a reference to \c this .
      * \sa symbolicFactorization(), numericFactorization(), and solve()
      */
-    super_type& preOrdering();
+    super_type& preOrdering() override;
 
 
     /**
@@ -183,7 +149,7 @@ namespace Amesos2 {
      * \return a reference to \c this .
      * \sa preOrdering(), numericFactorization(), and solve()
      */
-    super_type& symbolicFactorization();
+    super_type& symbolicFactorization() override;
 
 
     /**
@@ -209,7 +175,7 @@ namespace Amesos2 {
      * \return a reference to \c this
      * \sa preOrdering(), symbolicFactorization(), and solve()
      */
-    super_type& numericFactorization();
+    super_type& numericFactorization() override;
 
 
     /**
@@ -231,9 +197,9 @@ namespace Amesos2 {
      *
      * \sa preOrdering(), symbolicFactorization(), and numericFactorization()
      */
-    void solve();
-    void solve(const Teuchos::Ptr<Vector> X, const Teuchos::Ptr<const Vector> B) const;
-    void solve(Vector* X, const Vector* B) const;
+    void solve() override;
+    void solve(const Teuchos::Ptr<Vector> X, const Teuchos::Ptr<const Vector> B) const override;
+    void solve(Vector* X, const Vector* B) const override;
 
     int solve_ir(const Teuchos::Ptr<Vector> X, const Teuchos::Ptr<const Vector> B,
                  const int maxNumIters, const bool verbose) const;
@@ -253,27 +219,27 @@ namespace Amesos2 {
      * matrices.  Classes that work only on symmetric matrices would
      * return false for non-symmetric matrices. etc.
      */
-    bool matrixShapeOK();
+    bool matrixShapeOK() override;
 
-    void setA( const Teuchos::RCP<const Matrix> a, EPhase keep_phase = CLEAN );
+    void setA( const Teuchos::RCP<const Matrix> a, EPhase keep_phase = CLEAN ) override;
 
-    void setA( const Matrix* a, EPhase keep_phase = CLEAN ){ setA(Teuchos::rcp(a), keep_phase); }
+    void setA( const Matrix* a, EPhase keep_phase = CLEAN ) override { setA(Teuchos::rcp(a), keep_phase); }
 
-    void setX(const Teuchos::RCP<Vector> x){ multiVecX_ = x; }
+    void setX(const Teuchos::RCP<Vector> x) override { multiVecX_ = x; }
 
-    void setX(Vector* x){ multiVecX_ = Teuchos::rcp(x); }
+    void setX(Vector* x) override { multiVecX_ = Teuchos::rcp(x); }
   
-    const Teuchos::RCP<Vector> getX(){ return( multiVecX_ ); }
+    const Teuchos::RCP<Vector> getX() override { return( multiVecX_ ); }
 
-    Vector* getXRaw(){ return multiVecX_.getRawPtr(); }
+    Vector* getXRaw() override { return multiVecX_.getRawPtr(); }
 
-    void setB(const Teuchos::RCP<const Vector> b){ multiVecB_ = b; }
+    void setB(const Teuchos::RCP<const Vector> b) override { multiVecB_ = b; }
 
-    void setB(const Vector* b){ multiVecB_ = Teuchos::rcp(b); }
+    void setB(const Vector* b) override { multiVecB_ = Teuchos::rcp(b); }
 
-    const Teuchos::RCP<const Vector> getB(){ return( multiVecB_ ); }
+    const Teuchos::RCP<const Vector> getB() override { return( multiVecB_ ); }
 
-    const Vector* getBRaw(){ return multiVecB_.getRawPtr(); }
+    const Vector* getBRaw() override { return multiVecB_.getRawPtr(); }
 
 
     /// \name Parameter methods
@@ -301,7 +267,7 @@ namespace Amesos2 {
      * \return a reference to \c this
      */
     super_type& setParameters(
-			      const Teuchos::RCP<Teuchos::ParameterList> & parameterList );
+			      const Teuchos::RCP<Teuchos::ParameterList> & parameterList ) override;
 
 
     /**
@@ -313,7 +279,7 @@ namespace Amesos2 {
      * recognize multiple data types as arguments for a particular parameters
      * (eg. recognizing \c "YES" and \c "NO" as well as \c true and \c false ).
      */
-    Teuchos::RCP<const Teuchos::ParameterList> getValidParameters() const;
+    Teuchos::RCP<const Teuchos::ParameterList> getValidParameters() const override;
 
 
     /**
@@ -360,27 +326,27 @@ namespace Amesos2 {
     //@{
 
     /// Returns a pointer to the Teuchos::Comm communicator with this operator.
-    Teuchos::RCP<const Teuchos::Comm<int> > getComm() const
+    Teuchos::RCP<const Teuchos::Comm<int> > getComm() const override
     {
       return matrixA_->getComm();
     }
 
   
     /// Returns a reference to this solver's internal status object
-    inline Status& getStatus() const { return( status_ ); }
+    inline Status& getStatus() const override { return( status_ ); }
 
 
     //@} End Accessor methods
 
 
     /// Returns a short description of this Solver
-    std::string description() const;
+    std::string description() const override;
 
 
     /// Prints the status information about the current solver with some level
     /// of verbosity
     void describe(Teuchos::FancyOStream &out,
-		  const Teuchos::EVerbosityLevel verbLevel=Teuchos::Describable::verbLevel_default) const;
+		  const Teuchos::EVerbosityLevel verbLevel=Teuchos::Describable::verbLevel_default) const override;
 
 
     /**
@@ -401,7 +367,7 @@ namespace Amesos2 {
      */
     void printTiming(
 		     Teuchos::FancyOStream &out,
-		     const Teuchos::EVerbosityLevel verbLevel) const;
+		     const Teuchos::EVerbosityLevel verbLevel) const override;
 
 
     /**
@@ -412,7 +378,7 @@ namespace Amesos2 {
      * \param [out] timingParameterList Accepts timing information from the
      * current solver
      */
-    void getTiming(Teuchos::ParameterList& timingParameterList) const;
+    void getTiming(Teuchos::ParameterList& timingParameterList) const override;
 
 
     /**
@@ -422,7 +388,7 @@ namespace Amesos2 {
      *
      * \return A \c std::string which is the name of this solver
      */
-    std::string name() const;
+    std::string name() const override;
 
   private:
 
@@ -508,6 +474,21 @@ namespace Amesos2 {
     /// Number of process images in the matrix communicator
     int nprocs_;
 
+    /// Contiguous GID map for reindex
+    typedef Tpetra::Map<local_ordinal_type,
+                        global_ordinal_type,
+                        node_type> map_type;
+    Teuchos::RCP<const map_type> contig_rowmap_;
+    Teuchos::RCP<const map_type> contig_colmap_;
+
+    /// Communication pattern for gather
+    typedef Kokkos::DefaultHostExecutionSpace                 HostExecSpaceType;
+    typedef Kokkos::View<local_ordinal_type*, HostExecSpaceType> host_ordinal_type_array;
+    typedef Kokkos::View<       scalar_type*, HostExecSpaceType> host_scalar_type_array;
+    host_ordinal_type_array recvCounts;
+    host_ordinal_type_array recvDispls;
+    host_ordinal_type_array transpose_map;
+    host_scalar_type_array  nzvals_t;
   };				// End class Amesos2::SolverCore
 
 

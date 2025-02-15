@@ -1,43 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov), or
-//                    Mauro Perego  (mperego@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file test_01.hpp
@@ -61,23 +28,11 @@
 #include "Teuchos_oblackholestream.hpp"
 #include "Teuchos_RCP.hpp"
 
+#include "packages/intrepid2/unit-test/Discretization/Basis/Macros.hpp"
 
 namespace Intrepid2 {
 
   namespace Test {
-
-#define INTREPID2_TEST_ERROR_EXPECTED( S )                              \
-    try {                                                               \
-      ++nthrow;                                                         \
-      S ;                                                               \
-    }                                                                   \
-    catch (std::exception &err) {                                        \
-      ++ncatch;                                                         \
-      *outStream << "Expected Error ----------------------------------------------------------------\n"; \
-      *outStream << err.what() << '\n';                                 \
-      *outStream << "-------------------------------------------------------------------------------" << "\n\n"; \
-    }
-
 
     template<typename OutValueType, typename PointValueType, typename DeviceType>
     int HVOL_QUAD_Cn_FEM_Test01(const bool verbose) {
@@ -122,8 +77,6 @@ namespace Intrepid2 {
       typedef Kokkos::DynRankView<OutValueType,DeviceType> DynRankViewOutValueType;
       typedef typename ScalarTraits<OutValueType>::scalar_type scalar_type;
       typedef Kokkos::DynRankView<scalar_type, DeviceType> DynRankViewScalarValueType;
-
-#define ConstructWithLabelScalar(obj, ...) obj(#obj, __VA_ARGS__)
 
       const scalar_type tol = tolerence();
       int errorFlag = 0;
@@ -317,7 +270,7 @@ namespace Intrepid2 {
             const auto numPoints = quadBasis.getCardinality();
             const auto spaceDim  = quadBasis.getBaseCellTopology().getDimension();
 
-            DynRankViewScalarValueType ConstructWithLabelScalar(dofCoords_scalar, numPoints, spaceDim);
+            DynRankViewScalarValueType ConstructWithLabel(dofCoords_scalar, numPoints, spaceDim);
             DynRankViewPointValueType ConstructWithLabelPointView(dofCoords, numDofs , spaceDim);
 
             quadBasis.getDofCoords(dofCoords_scalar);
@@ -354,17 +307,17 @@ namespace Intrepid2 {
       << "===============================================================================\n"
       << "| TEST 4: Function Space is Correct                                           |\n"
       << "===============================================================================\n";
-      
+
       try {
         for (auto ip=0;ip<std::min(5, maxOrder);++ip) {
           QuadBasisType quadBasis(ip);
-          
+
           const EFunctionSpace fs = quadBasis.getFunctionSpace();
-          
+
           if (fs != FUNCTION_SPACE_HVOL)
           {
             *outStream << std::setw(70) << "------------- TEST FAILURE! -------------" << "\n";
-            
+
             // Output the multi-index of the value where the error is:
             *outStream << " Expected a function space of FUNCTION_SPACE_HVOL (enum value " << FUNCTION_SPACE_HVOL << "),";
             *outStream << " but got " << fs << "\n";

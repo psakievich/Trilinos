@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020, 2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -30,7 +30,7 @@ static int  last_err_num;
   \ingroup Utilities
   \undoc
 */
-void ex__reset_error_status(void)
+void exi_reset_error_status(void)
 {
 #if !defined(EXODUS_THREADSAFE)
   exerrval   = 0;
@@ -106,9 +106,7 @@ void ex_err(const char *module_name, const char *message, int err_num)
   if (err_num == EX_PRTLASTMSG) {
     fprintf(stderr, "\n[%s] %s\n", EX_PNAME, EX_ERRMSG);
     fprintf(stderr, "    exerrval = %d\n", EX_ERR_NUM);
-    if (EX_ERR_NUM < 0) {
-      fprintf(stderr, "\t%s\n", ex_strerror(EX_ERR_NUM));
-    }
+    fprintf(stderr, "\t%s\n", ex_strerror(EX_ERR_NUM));
     EX_FUNC_VOID();
   }
 
@@ -128,9 +126,7 @@ void ex_err(const char *module_name, const char *message, int err_num)
 
   else if (exoptval & EX_VERBOSE) { /* check see if we really want to hear this */
     fprintf(stderr, "\nExodus Library Warning/Error: [%s]\n\t%s\n", module_name, message);
-    if (err_num < 0) {
-      fprintf(stderr, "\t%s\n", ex_strerror(err_num));
-    }
+    fprintf(stderr, "\t%s\n", ex_strerror(err_num));
   }
   fflush(stderr);
 
@@ -147,7 +143,7 @@ void ex_err(const char *module_name, const char *message, int err_num)
 The function ex_err_fn() logs an error to stderr. It is intended
 to provide explanatory messages for error codes returned from other
 exodus routines.  The main difference between ex_err_fn() and ex_err() is
-that ex_err_fn() will print the name of the exodus file that the error occured on.
+that ex_err_fn() will print the name of the exodus file that the error occurred on.
 
 The passed in error codes and corresponding messages are listed in
 \file{exodusII.h}. The programmer may supplement the error message printed
@@ -212,7 +208,7 @@ void ex_err_fn(int exoid, const char *module_name, const char *message, int err_
   if (err_num == EX_PRTLASTMSG) {
     fprintf(stderr, "\n[%s] %s\n", EX_PNAME, EX_ERRMSG);
 
-    struct ex__file_item *file = ex__find_file_item(exoid);
+    struct exi_file_item *file = exi_find_file_item(exoid);
     if (file) {
       size_t pathlen = 0;
       nc_inq_path(exoid, &pathlen, NULL);
@@ -228,10 +224,8 @@ void ex_err_fn(int exoid, const char *module_name, const char *message, int err_
     }
 
     fprintf(stderr, "    exerrval = %d\n", EX_ERR_NUM);
-
-    if (EX_ERR_NUM < 0) {
-      fprintf(stderr, "\t%s\n", ex_strerror(EX_ERR_NUM));
-    }
+    fprintf(stderr, "\t%s\n", ex_strerror(EX_ERR_NUM));
+    fflush(stderr);
     EX_FUNC_VOID();
   }
 
@@ -246,12 +240,13 @@ void ex_err_fn(int exoid, const char *module_name, const char *message, int err_
   if (err_num == EX_NULLENTITY) {
     if (exoptval & EX_NULLVERBOSE) {
       fprintf(stderr, "\nExodus Library Warning: [%s]\n\t%s\n", module_name, message);
+      fflush(stderr);
     }
   }
 
   else if (exoptval & EX_VERBOSE) { /* check see if we really want to hear this */
     char                 *path = NULL;
-    struct ex__file_item *file = ex__find_file_item(exoid);
+    struct exi_file_item *file = exi_find_file_item(exoid);
     if (file) {
       size_t pathlen = 0;
       nc_inq_path(exoid, &pathlen, NULL);
@@ -268,11 +263,9 @@ void ex_err_fn(int exoid, const char *module_name, const char *message, int err_
     else {
       fprintf(stderr, "\nExodus Library Warning/Error: [%s]\n\t%s\n", module_name, message);
     }
-    if (err_num < 0) {
-      fprintf(stderr, "\t%s\n", ex_strerror(err_num));
-    }
+    fprintf(stderr, "\t%s\n", ex_strerror(err_num));
+    fflush(stderr);
   }
-  fflush(stderr);
 
   /* with netCDF 3.4, (fatal) system error codes are > 0;
      so all EXODUS fatal error codes are > 0    */
@@ -342,7 +335,8 @@ const char *ex_strerror(int err_num)
   case EX_MEMFAIL: return "Memory allocation failure";
   case EX_BADFILEMODE: return "Bad file mode -- cannot specify both EX_READ and EX_WRITE";
   case EX_BADFILEID: return "Bad file id. Could not find exodus file associated with file id.";
-  case EX_WRONGFILETYPE: return "Integer sizes must match for input and output file in ex_copy.";
+  case EX_WRONGFILETYPE:
+    return "File does not exist or is not of a supported type (netcdf3, netcdf4, netcdf5).";
   case EX_LOOKUPFAIL:
     return "Id lookup failed for specified entity type. Could not find entity with specified id.";
   case EX_BADFILENAME: return "Empty or null filename specified.";
@@ -353,6 +347,8 @@ const char *ex_strerror(int err_num)
   case EX_INTERNAL: return "Internal logic error in exodus library.";
   case EX_NOTROOTID: return "File id is not the root id; it is a subgroup id.";
   case EX_NULLENTITY: return "Null entity found.";
+  case EX_NOTFOUND: return "Could not find requested variable on database.";
+  case EX_INTSIZEMISMATCH: return "Integer sizes must match for input and output file in ex_copy.";
   case EX_MSG: return "Message printed; no error implied.";
   default: return nc_strerror(err_num);
   }

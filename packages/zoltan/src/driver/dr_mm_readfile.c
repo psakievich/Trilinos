@@ -1,48 +1,11 @@
-/* 
- * @HEADER
- *
- * ***********************************************************************
- *
- *  Zoltan Toolkit for Load-balancing, Partitioning, Ordering and Coloring
- *                  Copyright 2012 Sandia Corporation
- *
- * Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
- * the U.S. Government retains certain rights in this software.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- * 1. Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution.
- *
- * 3. Neither the name of the Corporation nor the names of the
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Questions? Contact Karen Devine	kddevin@sandia.gov
- *                    Erik Boman	egboman@sandia.gov
- *
- * ***********************************************************************
- *
- * @HEADER
- */
+// @HEADER
+// *****************************************************************************
+//  Zoltan Toolkit for Load-balancing, Partitioning, Ordering and Coloring
+//
+// Copyright 2012 NTESS and the Zoltan contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 #include <stdlib.h>
 #include <ctype.h>
 #include "zoltan.h"
@@ -158,9 +121,9 @@ int error = 0;  /* flag to indicate status */
         M=N=gnz=0;
       }
     }
-    MPI_Bcast(&gnz, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&M, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&N, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&gnz, 1, MPI_INT, 0, zoltan_get_global_comm());
+    MPI_Bcast(&M, 1, MPI_INT, 0, zoltan_get_global_comm());
+    MPI_Bcast(&N, 1, MPI_INT, 0, zoltan_get_global_comm());
 
     if (pio_info->matrix_obj==COLUMNS){
       *nVtx = N;
@@ -205,7 +168,7 @@ int error = 0;  /* flag to indicate status */
       /* Initialize which process owns which vertex, and global
        * variables used by graph callbacks. */
 
-      ch_dist_init(Num_Proc, *nVtx, pio_info, &assignments, 0, MPI_COMM_WORLD);
+      ch_dist_init(Num_Proc, *nVtx, pio_info, &assignments, 0, zoltan_get_global_comm());
 
       if (Proc == 0){
         sendcount = (int *)malloc(Num_Proc * sizeof(int));
@@ -264,7 +227,7 @@ int error = 0;  /* flag to indicate status */
           start[0] = 0;
           for (j=0; j<Num_Proc; j++){
             if (j > 0){
-              MPI_Send(sendcount + j, 1, MPI_INT, j, 0x0101, MPI_COMM_WORLD);
+              MPI_Send(sendcount + j, 1, MPI_INT, j, 0x0101, zoltan_get_global_comm());
             }
             start[j+1] = start[j] + sendcount[j];
             sendcount[j] = 0;
@@ -285,7 +248,7 @@ int error = 0;  /* flag to indicate status */
           }
           for (j=1; j<Num_Proc; j++){
             MPI_Send(outVals + (2*start[j]), sendcount[j] * 2,
-                     MPI_INT, j, 0x0102, MPI_COMM_WORLD);
+                     MPI_INT, j, 0x0102, zoltan_get_global_comm());
           }
           rc = add_new_vals(outVals, myInCount, &myVals, &myCount, &myMaxCount);
           if (rc) {
@@ -297,8 +260,8 @@ int error = 0;  /* flag to indicate status */
         else{
           /* Await pins from process 0 and store them in a buffer
            */
-          MPI_Recv(&myInCount, 1, MPI_INT, 0, 0x0101, MPI_COMM_WORLD,&status);
-          MPI_Recv(inVals, myInCount*2, MPI_INT, 0, 0x0102, MPI_COMM_WORLD,&status);
+          MPI_Recv(&myInCount, 1, MPI_INT, 0, 0x0101, zoltan_get_global_comm(),&status);
+          MPI_Recv(inVals, myInCount*2, MPI_INT, 0, 0x0102, zoltan_get_global_comm(),&status);
           rc = add_new_vals(inVals, myInCount, &myVals, &myCount, &myMaxCount);
           if (rc) {
             fprintf(stderr,"Process %d out of memory\n",Proc);

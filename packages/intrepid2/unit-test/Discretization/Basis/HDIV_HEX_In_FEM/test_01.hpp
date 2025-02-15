@@ -1,43 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov), or
-//                    Mauro Perego  (mperego@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file test_01.hpp
@@ -62,21 +29,11 @@
 #include "Teuchos_oblackholestream.hpp"
 #include "Teuchos_RCP.hpp"
 
+#include "packages/intrepid2/unit-test/Discretization/Basis/Macros.hpp"
+
 namespace Intrepid2 {
 
 namespace Test {
-
-#define INTREPID2_TEST_ERROR_EXPECTED( S )                              \
-    try {                                                               \
-      ++nthrow;                                                         \
-      S ;                                                               \
-    }                                                                   \
-    catch (std::exception &err) {                                        \
-      ++ncatch;                                                         \
-      *outStream << "Expected Error ----------------------------------------------------------------\n"; \
-      *outStream << err.what() << '\n';                                 \
-      *outStream << "-------------------------------------------------------------------------------" << "\n\n"; \
-    }
 
 template<typename OutValueType, typename PointValueType, typename DeviceType>
 int HDIV_HEX_In_FEM_Test01(const bool verbose) {
@@ -117,8 +74,6 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
   typedef Kokkos::DynRankView<scalar_type, DeviceType> DynRankViewScalarValueType;
   typedef Kokkos::DynRankView<scalar_type, HostSpaceType> DynRankViewHostScalarValueType;
 
-#define ConstructWithLabelScalar(obj, ...) obj(#obj, __VA_ARGS__)
-
   const scalar_type tol = tolerence();
   int errorFlag = 0;
 
@@ -142,7 +97,7 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
     HexBasisType hexBasis(order);
 
     // Array of reference hex nodes - used for evaluation of basis
-    DynRankViewHostScalarValueType ConstructWithLabelScalar(hexNodesHost, 8, 3);
+    DynRankViewHostScalarValueType ConstructWithLabel(hexNodesHost, 8, 3);
 
     hexNodesHost(0,0) = -1.0; hexNodesHost(0,1) = -1.0; hexNodesHost(0,2) = -1.0;
     hexNodesHost(1,0) =  1.0; hexNodesHost(1,1) = -1.0; hexNodesHost(1,2) = -1.0;
@@ -268,10 +223,10 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
     HexBasisType hexBasis(order);
 
     const ordinal_type numFields = hexBasis.getCardinality();
-    DynRankViewScalarValueType ConstructWithLabelScalar(dofCoords_scalar, numFields, dim);
+    DynRankViewScalarValueType ConstructWithLabel(dofCoords_scalar, numFields, dim);
     hexBasis.getDofCoords(dofCoords_scalar);
 
-    DynRankViewScalarValueType ConstructWithLabelScalar(dofCoeffs, numFields, dim);
+    DynRankViewScalarValueType ConstructWithLabel(dofCoeffs, numFields, dim);
     hexBasis.getDofCoeffs(dofCoeffs);
 
     DynRankViewPointValueType ConstructWithLabelPointView(dofCoords, numFields , dim);
@@ -326,7 +281,7 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
 
     shards::CellTopology hex_8(shards::getCellTopologyData<shards::Hexahedron<8> >());
     const ordinal_type numFields = hexBasis.getCardinality();
-    DynRankViewScalarValueType ConstructWithLabelScalar(dofCoords_scalar, numFields, dim);
+    DynRankViewScalarValueType ConstructWithLabel(dofCoords_scalar, numFields, dim);
     hexBasis.getDofCoords(dofCoords_scalar);
 
     DynRankViewPointValueType ConstructWithLabelPointView(dofCoords, numFields , dim);
@@ -341,7 +296,7 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
     // Face normals
     //   Note normals are indexed by face following Shards numbering, but
     //   directions are consistent with basis defintion and not Shards orientation
-    DynRankViewHostScalarValueType ConstructWithLabelScalar(normals, numFields,dim); // normals at each point basis point
+    DynRankViewHostScalarValueType ConstructWithLabel(normals, numFields,dim); // normals at each point basis point
     normals(0,0)  =  0.0; normals(0,1)  =  1.0; normals(0,2)  =  0.0;
     normals(1,0)  =  1.0; normals(1,1)  =  0.0; normals(1,2)  =  0.0;
     normals(2,0)  =  0.0; normals(2,1)  =  1.0; normals(2,2)  =  0.0;
@@ -439,7 +394,7 @@ int HDIV_HEX_In_FEM_Test01(const bool verbose) {
     HexBasisType hexBasis(order);
 
     // Array of reference hex nodes - used for evaluation of basis
-    DynRankViewHostScalarValueType ConstructWithLabelScalar(hexNodesHost, 8, 3);
+    DynRankViewHostScalarValueType ConstructWithLabel(hexNodesHost, 8, 3);
     DynRankViewPointValueType ConstructWithLabelPointView(hexNodes, 8, 3);
 
     hexNodesHost(0,0) = -1.0; hexNodesHost(0,1) = -1.0; hexNodesHost(0,2) = -1.0;

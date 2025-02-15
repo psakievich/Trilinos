@@ -1,3 +1,11 @@
+// @HEADER
+// *****************************************************************************
+//       Ifpack2: Templated Object-Oriented Algebraic Preconditioner Package
+//
+// Copyright 2009 NTESS and the Ifpack2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 #include "Ifpack2_Factory.hpp"
 #include "Ifpack2_Details_CanChangeMatrix.hpp"
 #include "BelosTpetraAdapter.hpp"
@@ -50,7 +58,7 @@ template<class ViewType1,
                >::mag_type,
                typename ViewType2::non_const_value_type
              >::value,
-         const int rank = ViewType1::Rank>
+         const int rank = ViewType1::rank>
 class ElementWiseMultiply {};
 
 template<class ViewType1,
@@ -65,7 +73,7 @@ class ElementWiseMultiply<ViewType1,
                           takeAbsoluteValueOfScalingFactors,
                           1> {
 public:
-  static_assert (ViewType1::Rank == 1, "ViewType1 must be a rank-1 "
+  static_assert (ViewType1::rank == 1, "ViewType1 must be a rank-1 "
                  "Kokkos::View in order to use this specialization.");
 
   ElementWiseMultiply (const ViewType1& X,
@@ -111,7 +119,7 @@ class ElementWiseMultiply<ViewType1,
                           takeAbsoluteValueOfScalingFactors,
                           2> {
 public:
-  static_assert (ViewType1::Rank == 2, "ViewType1 must be a rank-2 "
+  static_assert (ViewType1::rank == 2, "ViewType1 must be a rank-2 "
                  "Kokkos::View in order to use this specialization.");
 
   ElementWiseMultiply (const ViewType1& X,
@@ -251,7 +259,7 @@ template<class ViewType1,
                >::mag_type,
                typename ViewType2::non_const_value_type
              >::value,
-         const int rank = ViewType1::Rank>
+         const int rank = ViewType1::rank>
 class ElementWiseDivide {};
 
 template<class ViewType1,
@@ -266,7 +274,7 @@ class ElementWiseDivide<ViewType1,
                         takeAbsoluteValueOfScalingFactors,
                         1> {
 public:
-  static_assert (ViewType1::Rank == 1, "ViewType1 must be a rank-1 "
+  static_assert (ViewType1::rank == 1, "ViewType1 must be a rank-1 "
                  "Kokkos::View in order to use this specialization.");
 
   ElementWiseDivide (const ViewType1& X,
@@ -312,7 +320,7 @@ class ElementWiseDivide<ViewType1,
                         takeAbsoluteValueOfScalingFactors,
                         2> {
 public:
-  static_assert (ViewType1::Rank == 2, "ViewType1 must be a rank-2 "
+  static_assert (ViewType1::rank == 2, "ViewType1 must be a rank-2 "
                  "Kokkos::View in order to use this specialization.");
 
   ElementWiseDivide (const ViewType1& X,

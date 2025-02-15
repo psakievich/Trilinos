@@ -35,18 +35,22 @@ TRIBITS_ADD_LIBRARY(
 )
 
 set_property(TARGET exodus PROPERTY C_STANDARD 99)
+set_property(TARGET exodus PROPERTY C_EXTENSIONS ON)
 
 if (SEACASExodus_ENABLE_SHARED)
    if (NOT BUILD_SHARED_LIBS)
-      TRIBITS_ADD_LIBRARY(
+      ADD_LIBRARY(
               exodus_shared
               SHARED
-              SOURCES ${SOURCES} ${DEP_SOURCES}
-	      IMPORTEDLIBS ${TPL_Netcdf_LIBRARIES}
+              ${SOURCES} ${DEP_SOURCES}
       )
+      target_include_directories(exodus_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+      target_link_libraries(exodus_shared PUBLIC Netcdf::all_libs)
       set_property(TARGET exodus_shared PROPERTY C_STANDARD 99)
+      # This keeps the library out of the `all_libs` targets...
+      set_target_properties(exodus_shared PROPERTIES TRIBITS_TESTONLY_LIB TRUE)
       set_target_properties(exodus_shared PROPERTIES OUTPUT_NAME exodus)
-      INSTALL(TARGETS exodus_shared DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+      INSTALL(TARGETS exodus_shared DESTINATION ${CMAKE_INSTALL_LIBDIR})
    endif()
 endif()
 
@@ -64,11 +68,11 @@ if (SEACASExodus_ENABLE_STATIC)
    # This keeps the library out of the `all_libs` targets...
    set_target_properties(exodus_static PROPERTIES TRIBITS_TESTONLY_LIB TRUE)
    set_target_properties(exodus_static PROPERTIES OUTPUT_NAME exodus)
-   INSTALL(TARGETS exodus_static DESTINATION ${CMAKE_INSTALL_PREFIX}/lib)
+   INSTALL(TARGETS exodus_static DESTINATION ${CMAKE_INSTALL_LIBDIR})
 
    # For backwards compatibility, the C exodus library was called libexoIIv2c.a
    # Create a symbolic link from libexodus.a to libexoIIv2c.a -- do only for static lib
-   InstallSymLink(libexodus.a ${CMAKE_INSTALL_PREFIX}/lib/libexoIIv2c.a)
+   InstallSymLink(libexodus.a ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/libexoIIv2c.a)
 endif()
 
 if (${CMAKE_PROJECT_NAME} STREQUAL "Seacas")

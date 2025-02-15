@@ -1,39 +1,10 @@
-// ***********************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //          Tpetra: Templated Linear Algebra Services Package
-//                 Copyright (2008) Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// ************************************************************************
+// Copyright 2008 NTESS and the Tpetra contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #include "Tpetra_Details_DistributorPlan.hpp"
@@ -58,6 +29,14 @@ DistributorSendTypeEnumToString (EDistributorSendType sendType)
   else if (sendType == DISTRIBUTOR_ALLTOALL) {
     return "Alltoall";
   }
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  else if (sendType == DISTRIBUTOR_MPIADVANCE_ALLTOALL) {
+    return "MpiAdvanceAlltoall";
+  }
+  else if (sendType == DISTRIBUTOR_MPIADVANCE_NBRALLTOALLV) {
+    return "MpiAdvanceNbralltoallv";
+  }
+#endif
   else {
     TEUCHOS_TEST_FOR_EXCEPTION(true, std::invalid_argument, "Invalid "
       "EDistributorSendType enum value " << sendType << ".");
@@ -87,6 +66,9 @@ DistributorHowInitializedEnumToString (EDistributorHowInitialized how)
 
 DistributorPlan::DistributorPlan(Teuchos::RCP<const Teuchos::Comm<int>> comm)
   : comm_(comm),
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+    mpixComm_(Teuchos::null),
+#endif
     howInitialized_(DISTRIBUTOR_NOT_INITIALIZED),
     reversePlan_(Teuchos::null),
     sendType_(DISTRIBUTOR_SEND),
@@ -99,6 +81,9 @@ DistributorPlan::DistributorPlan(Teuchos::RCP<const Teuchos::Comm<int>> comm)
 
 DistributorPlan::DistributorPlan(const DistributorPlan& otherPlan)
   : comm_(otherPlan.comm_),
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+    mpixComm_(otherPlan.mpixComm_),
+#endif
     howInitialized_(DISTRIBUTOR_INITIALIZED_BY_COPY),
     reversePlan_(otherPlan.reversePlan_),
     sendType_(otherPlan.sendType_),
@@ -393,6 +378,10 @@ size_t DistributorPlan::createFromSends(const Teuchos::ArrayView<const int>& exp
   // Invert map to see what msgs are received and what length
   computeReceives();
 
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  initializeMpiAdvance();
+#endif
+
   // createFromRecvs() calls createFromSends(), but will set
   // howInitialized_ again after calling createFromSends().
   howInitialized_ = Details::DISTRIBUTOR_INITIALIZED_BY_CREATE_FROM_SENDS;
@@ -403,9 +392,7 @@ size_t DistributorPlan::createFromSends(const Teuchos::ArrayView<const int>& exp
 void DistributorPlan::createFromRecvs(const Teuchos::ArrayView<const int>& remoteProcIDs)
 {
   createFromSends(remoteProcIDs);
-
   *this = *getReversePlan();
-
   howInitialized_ = Details::DISTRIBUTOR_INITIALIZED_BY_CREATE_FROM_RECVS;
 }
 
@@ -420,7 +407,6 @@ void DistributorPlan::createFromSendsAndRecvs(const Teuchos::ArrayView<const int
   // should be made.
 
   howInitialized_ = Tpetra::Details::DISTRIBUTOR_INITIALIZED_BY_CREATE_FROM_SENDS_N_RECVS;
-
 
   int myProcID = comm_->getRank ();
   int numProcs = comm_->getSize();
@@ -592,6 +578,10 @@ void DistributorPlan::createFromSendsAndRecvs(const Teuchos::ArrayView<const int
   totalReceiveLength_ = remoteProcIDs.size();
   indicesFrom_.clear ();
   numReceives_-=sendMessageToSelf_;
+  
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  initializeMpiAdvance();
+#endif
 }
 
 Teuchos::RCP<DistributorPlan> DistributorPlan::getReversePlan() const {
@@ -638,6 +628,11 @@ void DistributorPlan::createReversePlan() const
   reversePlan_->procsFrom_ = procIdsToSendTo_;
   reversePlan_->startsFrom_ = startsTo_;
   reversePlan_->indicesFrom_ = indicesTo_;
+
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  // is there a smarter way to do this
+  reversePlan_->initializeMpiAdvance();
+#endif
 }
 
 void DistributorPlan::computeReceives()
@@ -898,6 +893,10 @@ Teuchos::Array<std::string> distributorSendTypes()
   sendTypes.push_back ("Isend");
   sendTypes.push_back ("Send");
   sendTypes.push_back ("Alltoall");
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  sendTypes.push_back ("MpiAdvanceAlltoall");
+  sendTypes.push_back ("MpiAdvanceNbralltoallv");
+#endif
   return sendTypes;
 }
 
@@ -916,6 +915,10 @@ DistributorPlan::getValidParameters() const
   sendTypeEnums.push_back (Details::DISTRIBUTOR_ISEND);
   sendTypeEnums.push_back (Details::DISTRIBUTOR_SEND);
   sendTypeEnums.push_back (Details::DISTRIBUTOR_ALLTOALL);
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+  sendTypeEnums.push_back (Details::DISTRIBUTOR_MPIADVANCE_ALLTOALL);
+  sendTypeEnums.push_back (Details::DISTRIBUTOR_MPIADVANCE_NBRALLTOALLV);
+#endif
 
   RCP<ParameterList> plist = parameterList ("Tpetra::Distributor");
 
@@ -926,6 +929,56 @@ DistributorPlan::getValidParameters() const
 
   return Teuchos::rcp_const_cast<const ParameterList> (plist);
 }
+
+#if defined(HAVE_TPETRACORE_MPI_ADVANCE)
+
+// Used by Teuchos::RCP to clean up an owned MPIX_Comm*
+struct MpixCommDeallocator {
+  void free(MPIX_Comm **comm) const {
+    MPIX_Comm_free(*comm);
+  }
+};
+
+void DistributorPlan::initializeMpiAdvance() {
+
+  // assert the mpix communicator is null. if this is not the case we will figure out why
+  TEUCHOS_ASSERT(mpixComm_.is_null());
+
+  // use the members to initialize the graph for neightborhood mode, or just the MPIX communicator for non-neighborhood mode
+  Teuchos::RCP<const Teuchos::MpiComm<int> > mpiComm = Teuchos::rcp_dynamic_cast<const Teuchos::MpiComm<int> >(comm_);
+  Teuchos::RCP<const Teuchos::OpaqueWrapper<MPI_Comm> > rawComm = mpiComm->getRawMpiComm();
+  int err = 0;
+  if (sendType_ == DISTRIBUTOR_MPIADVANCE_ALLTOALL) {
+    MPIX_Comm **mpixComm = new(MPIX_Comm*);
+    err = MPIX_Comm_init(mpixComm, (*rawComm)());
+    mpixComm_ = Teuchos::RCP(mpixComm,
+      MpixCommDeallocator(),
+      true /*take ownership*/
+    );
+  }
+  else if (sendType_ == DISTRIBUTOR_MPIADVANCE_NBRALLTOALLV) {
+    int numRecvs = (int)(numReceives_ + (sendMessageToSelf_ ? 1 : 0));
+    int *sourceRanks = procsFrom_.data();
+    
+    // int *sourceWeights = static_cast<int*>(lengthsFrom_.data());// lengthsFrom_ may not be int
+    const int *sourceWeights = MPI_UNWEIGHTED;
+    int numSends = (int)(numSendsToOtherProcs_ + (sendMessageToSelf_ ? 1 : 0));
+    int *destRanks = procIdsToSendTo_.data();
+
+    // int *destWeights = static_cast<int*>(lengthsTo_.data()); // lengthsTo_ may not be int
+    const int *destWeights = MPI_UNWEIGHTED; // lengthsTo_ may not be int
+
+    MPIX_Comm **mpixComm = new(MPIX_Comm*);
+    err = MPIX_Dist_graph_create_adjacent((*rawComm)(), numRecvs, sourceRanks, sourceWeights, numSends, destRanks, destWeights, MPI_INFO_NULL, false, mpixComm);
+    mpixComm_ = Teuchos::RCP(mpixComm,
+      MpixCommDeallocator(),
+      true /*take ownership*/
+    );
+  }
+
+  TEUCHOS_ASSERT(err == 0);
+}
+#endif
 
 }
 }

@@ -32,26 +32,10 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 # 
 
-
-#
-# A) Package-specific configuration options
-#
-
-#
-# B) Define the header and source files (and directories)
-#
-
-#
-# src
-#
-
 SET(HEADERS "")
 SET(SOURCES "")
 
-TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR})
-
-
-IF (TPL_ENABLE_MPI)
+IF (STK_HAS_MPI)
 
 FILE(GLOB HEADERS *.hpp *.h)
 FILE(GLOB SOURCES *.cpp)
@@ -60,6 +44,7 @@ ELSE()
 
 FILE(GLOB HEADERS
      CommBuffer.hpp
+     OutputStreams.hpp
      Parallel.hpp
      ParallelComm.hpp
      ParallelReduce.hpp
@@ -69,6 +54,7 @@ FILE(GLOB HEADERS
     )
 FILE(GLOB SOURCES
      CommBuffer.cpp
+     OutputStreams.cpp
      Parallel.cpp
      ParallelComm.cpp
      ParallelReduce.cpp
@@ -77,16 +63,36 @@ FILE(GLOB SOURCES
 
 ENDIF()
 
-#
-# C) Define the targets for package's library(s)
-#
-
-TRIBITS_ADD_LIBRARY(
-  stk_util_parallel
-  NOINSTALLHEADERS ${HEADERS}
-  SOURCES ${SOURCES}
-  DEPLIBS stk_util_util
+IF(HAVE_STK_Trilinos)
+  TRIBITS_ADD_LIBRARY(stk_util_parallel
+    NOINSTALLHEADERS ${HEADERS}
+    SOURCES ${SOURCES}
+    DEPLIBS stk_util_util
   )
+ELSE()
+  add_library(stk_util_parallel ${SOURCES})
+
+  IF(STK_HAS_MPI)
+    target_link_libraries(stk_util_parallel PUBLIC MPI::MPI_CXX)
+    message("MPI_LIBRARIES: ${MPI_LIBRARIES}")
+  ENDIF()
+
+  target_link_libraries(stk_util_parallel PUBLIC stk_util_util)
+
+  IF(${PROJECT_NAME}_ENABLE_SEACASAprepro_lib)
+    find_package(SEACASAprepro_lib REQUIRED)
+    target_link_libraries(stk_util_parallel PUBLIC SEACASAprepro_lib::aprepro_lib)
+  ENDIF()
+ENDIF()
+
+target_include_directories(stk_util_parallel PUBLIC
+  $<BUILD_INTERFACE:${STK_TOPLEVEL_SOURCE_DIR}/stk_util>
+  $<INSTALL_INTERFACE:include>
+)
 
 INSTALL(FILES ${HEADERS} DESTINATION
     ${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}/stk_util/parallel/)
+
+IF(NOT HAVE_STK_Trilinos)
+  INSTALL(TARGETS stk_util_parallel EXPORT stkTargets DESTINATION ${STK_INSTALL_LIBDIR})
+ENDIF()

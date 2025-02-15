@@ -7,6 +7,7 @@ SET(Intrepid2_TEST_ETI_FILE "test_01")
 # value types
 SET(Intrepid2_TEST_ETI_VALUETYPE_NAME "")
 SET(Intrepid2_TEST_ETI_VALUETYPE "")
+SET(Intrepid2_TEST_ETI_SACADO "")
 
 LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "DOUBLE_DOUBLE")
 LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "double,double")
@@ -53,7 +54,7 @@ IF(Kokkos_ENABLE_CUDA)
 ENDIF()
 IF(Kokkos_ENABLE_HIP)
   LIST(APPEND Intrepid2_TEST_ETI_DEVICE_NAME "HIP")
-  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::Experimental::HIP,Kokkos::Experimental::HIPSpace>")
+  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::HIP,Kokkos::HIPSpace>")
 ENDIF()
 
 LIST(LENGTH Intrepid2_TEST_ETI_DEVICE_NAME ETI_DEVICE_COUNT)
@@ -94,10 +95,17 @@ SET(Intrepid2_TEST_ETI_FILE "test_02")
 # value types
 SET(Intrepid2_TEST_ETI_VALUETYPE_NAME "")
 SET(Intrepid2_TEST_ETI_VALUETYPE "")
+SET(Intrepid2_TEST_ETI_SACADO "")
 
 LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "DOUBLE_DOUBLE")
 LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "double,double")
 LIST(APPEND Intrepid2_TEST_ETI_SACADO         "0")
+
+IF (HAVE_INTREPID2_SACADO) 
+  LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "DFAD_DFAD")
+  LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "Sacado::Fad::DFad<double>,Sacado::Fad::DFad<double> ")
+  LIST(APPEND Intrepid2_TEST_ETI_SACADO         "33")
+ENDIF()
 
 LIST(LENGTH Intrepid2_TEST_ETI_VALUETYPE_NAME ETI_VALUETYPE_COUNT)
 MATH(EXPR ETI_VALUETYPE_COUNT "${ETI_VALUETYPE_COUNT}-1")
@@ -119,7 +127,7 @@ IF(Kokkos_ENABLE_CUDA)
 ENDIF()
 IF(Kokkos_ENABLE_HIP)
   LIST(APPEND Intrepid2_TEST_ETI_DEVICE_NAME "HIP")
-  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::Experimental::HIP,Kokkos::Experimental::HIPSpace>")
+  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::HIP,Kokkos::HIPSpace>")
 ENDIF()
 
 LIST(LENGTH Intrepid2_TEST_ETI_DEVICE_NAME ETI_DEVICE_COUNT)

@@ -1,48 +1,11 @@
-/* 
- * @HEADER
- *
- * ***********************************************************************
- *
- *  Zoltan Toolkit for Load-balancing, Partitioning, Ordering and Coloring
- *                  Copyright 2012 Sandia Corporation
- *
- * Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
- * the U.S. Government retains certain rights in this software.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are
- * met:
- *
- * 1. Redistributions of source code must retain the above copyright
- * notice, this list of conditions and the following disclaimer.
- *
- * 2. Redistributions in binary form must reproduce the above copyright
- * notice, this list of conditions and the following disclaimer in the
- * documentation and/or other materials provided with the distribution.
- *
- * 3. Neither the name of the Corporation nor the names of the
- * contributors may be used to endorse or promote products derived from
- * this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
- * EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
- * PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
- * CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
- * EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
- * PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- * PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
- * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
- * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- *
- * Questions? Contact Karen Devine	kddevin@sandia.gov
- *                    Erik Boman	egboman@sandia.gov
- *
- * ***********************************************************************
- *
- * @HEADER
- */
+// @HEADER
+// *****************************************************************************
+//  Zoltan Toolkit for Load-balancing, Partitioning, Ordering and Coloring
+//
+// Copyright 2012 NTESS and the Zoltan contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 #include "dr_const.h"
 #include "dr_externs.h"
 #include "dr_maps_const.h"
@@ -386,9 +349,9 @@ ZOLTAN_COMM_OBJ *comm, *comm_copy;
    * Create DDirectory and register all owned elements. 
    */
 
-  MPI_Allreduce(&num_elems, &max_nelems, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD);
+  MPI_Allreduce(&num_elems, &max_nelems, 1, MPI_INT, MPI_MAX, zoltan_get_global_comm());
 
-  ierr = Zoltan_DD_Create(&dd, MPI_COMM_WORLD, 1, 1, 0, max_nelems, 0);
+  ierr = Zoltan_DD_Create(&dd, zoltan_get_global_comm(), 1, 1, 0, max_nelems, 0);
   if (ierr) {
     Gen_Error(0, "Fatal:  Error returned by Zoltan_DD_Create");
     error = 1;
@@ -498,7 +461,7 @@ ZOLTAN_COMM_OBJ *comm, *comm_copy;
    * Check for errors 
    */
 
-  MPI_Allreduce(&error, &gerror, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+  MPI_Allreduce(&error, &gerror, 1, MPI_INT, MPI_SUM, zoltan_get_global_comm());
   if (gerror) {
     Gen_Error(0, "Fatal:  Error returned by DDirectory Test");
     error_report(proc);
@@ -537,7 +500,7 @@ ZOLTAN_COMM_OBJ *comm, *comm_copy;
     i_want[j++] = my_gids[i];
   }
 
-  ierr = Zoltan_Comm_Create(&comm, num_nbor, ownerlist, MPI_COMM_WORLD, 747, 
+  ierr = Zoltan_Comm_Create(&comm, num_nbor, ownerlist, zoltan_get_global_comm(), 747, 
                         &num_others);
   if (ierr) {
     Gen_Error(0, "Fatal:  Error returned from Zoltan_Comm_Create");
@@ -683,7 +646,7 @@ ZOLTAN_COMM_OBJ *comm, *comm_copy;
      * output of generated map is serialized (and not junked up).
      */
     int nprocs;
-    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    MPI_Comm_size(zoltan_get_global_comm(), &nprocs);
     print_sync_end(proc, nprocs, 1);
   }
 

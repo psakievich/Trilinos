@@ -1,44 +1,10 @@
 // @HEADER
-//
-// ***********************************************************************
-//
+// *****************************************************************************
 //           Amesos2: Templated Direct Sparse Solver Package
-//                  Copyright 2011 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /**
@@ -88,9 +54,6 @@ namespace Amesos2 {
 
     using Teuchos::RCP;
     using Teuchos::ArrayView;
-
-    using Meta::is_same;
-    using Meta::if_then_else;
 
     /**
      * \brief Gets a Tpetra::Map described by the EDistribution.
@@ -336,9 +299,9 @@ namespace Amesos2 {
       {
         typedef typename M::global_size_t mat_gs_t;
         typedef typename KV_GS::value_type view_gs_t;
-        if_then_else<is_same<view_gs_t,mat_gs_t>::value,
+        std::conditional_t<std::is_same_v<view_gs_t,mat_gs_t>,
           same_gs_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op>,
-          diff_gs_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op> >::type::do_get(mat, nzvals, indices,
+          diff_gs_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op> >::do_get(mat, nzvals, indices,
                                                                                 pointers, nnz, map,
                                                                                 distribution, ordering);
       }
@@ -367,9 +330,9 @@ namespace Amesos2 {
 
         typedef typename KV_GO::value_type view_go_t;
         typedef typename KV_GS::value_type view_gs_t;
-        if_then_else<is_same<view_gs_t,mat_gs_t>::value,
+        std::conditional_t<std::is_same_v<view_gs_t,mat_gs_t>,
           same_gs_helper_kokkos_view<M, KV_S, KV_TMP, KV_GS, Op>,
-          diff_gs_helper_kokkos_view<M, KV_S, KV_TMP, KV_GS, Op> >::type::do_get(mat, nzvals, indices_tmp,
+          diff_gs_helper_kokkos_view<M, KV_S, KV_TMP, KV_GS, Op> >::do_get(mat, nzvals, indices_tmp,
                                                                                  pointers, nnz, map,
                                                                                  distribution, ordering);
         for (i = 0; i < size; ++i){
@@ -395,9 +358,9 @@ namespace Amesos2 {
       {
         typedef typename M::global_ordinal_t mat_go_t;
         typedef typename KV_GO::value_type view_go_t;
-        if_then_else<is_same<view_go_t,mat_go_t>::value,
+        std::conditional_t<std::is_same_v<view_go_t, mat_go_t>,
           same_go_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op>,
-          diff_go_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op> >::type::do_get(mat, nzvals, indices,
+          diff_go_helper_kokkos_view<M, KV_S, KV_GO, KV_GS, Op> >::do_get(mat, nzvals, indices,
                                                                                 pointers, nnz, map,
                                                                                 distribution, ordering);
       }
@@ -426,9 +389,9 @@ namespace Amesos2 {
 
         typedef typename KV_S::value_type view_scalar_t;
         typedef typename KV_GO::value_type view_go_t;
-        if_then_else<is_same<view_go_t,mat_go_t>::value,
+        std::conditional_t<std::is_same_v<view_go_t, mat_go_t>,
           same_go_helper_kokkos_view<M, KV_TMP, KV_GO, KV_GS, Op>,
-          diff_go_helper_kokkos_view<M, KV_TMP, KV_GO, KV_GS, Op> >::type::do_get(mat, nzvals_tmp, indices,
+          diff_go_helper_kokkos_view<M, KV_TMP, KV_GO, KV_GS, Op> >::do_get(mat, nzvals_tmp, indices,
                                                                                   pointers, nnz, map,
                                                                                   distribution, ordering);
 
@@ -504,9 +467,9 @@ namespace Amesos2 {
         typedef typename Matrix::scalar_t mat_scalar;
         typedef typename KV_S::value_type view_scalar_t;
 
-        if_then_else<is_same<mat_scalar,view_scalar_t>::value,
+        std::conditional_t<std::is_same_v<mat_scalar,view_scalar_t>,
           same_scalar_helper_kokkos_view<Matrix,KV_S,KV_GO,KV_GS,Op>,
-          diff_scalar_helper_kokkos_view<Matrix,KV_S,KV_GO,KV_GS,Op> >::type::do_get(mat,
+          diff_scalar_helper_kokkos_view<Matrix,KV_S,KV_GO,KV_GS,Op> >::do_get(mat,
                                                                                      nzvals, indices,
                                                                                      pointers, nnz,
                                                                                      map,

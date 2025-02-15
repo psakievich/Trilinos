@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2020, 2022 National Technology & Engineering Solutions
+// Copyright(C) 1999-2020, 2022, 2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -15,15 +15,18 @@ namespace Excn {
   {
   public:
     SystemInterface();
-    ~SystemInterface();
-
     bool parse_options(int argc, char **argv);
 
-    int  debug() const { return debugLevel_; }
-    int  screen_width() const { return screenWidth_; }
+    int debug() const { return debugLevel_; }
+    int screen_width() const { return screenWidth_; }
+
+    int  quantize_nsd() const { return quantizeNSD_; }
     int  compress_data() const { return compressionLevel_; }
     bool zlib() const { return zlib_; }
     bool szip() const { return szip_; }
+    bool zstd() const { return zstd_; }
+    bool bz2() const { return bz2_; }
+    bool quantize() const { return quantizeNSD_ > 0; }
 
     bool omit_nodesets() const { return omitNodesets_; }
     bool omit_sidesets() const { return omitSidesets_; }
@@ -62,8 +65,11 @@ namespace Excn {
     int  debugLevel_{0};
     int  screenWidth_{0};
     int  compressionLevel_{0};
-    bool zlib_{true};
+    int  quantizeNSD_{0};
+    bool zlib_{false};
     bool szip_{false};
+    bool zstd_{false};
+    bool bz2_{false};
     bool omitNodesets_{false};
     bool omitSidesets_{false};
     bool ints64Bit_{false};

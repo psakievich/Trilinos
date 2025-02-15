@@ -1,43 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov), or
-//                    Mauro Perego  (mperego@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file   Intrepid2_HGRAD_LINE_Cn_FEM.hpp
@@ -56,11 +23,11 @@
 #include "Teuchos_LAPACK.hpp"
 
 namespace Intrepid2 {
-  
+
   /** \class  Intrepid2::Basis_HGRAD_LINE_Cn_FEM
       \brief  Implementation of the locally H(grad)-compatible FEM basis of variable order
       on the [-1,1] reference line cell, using Lagrange polynomials. 
-  
+
       Implements Lagrange basis of variable order \f$n\f$ on
       the reference [-1,1] line cell.  The distribution of the points
       may be equispaced points with our without the endpoints, the Gauss-Legendre
@@ -104,11 +71,12 @@ namespace Intrepid2 {
                typename inputPointValueType,  class ...inputPointProperties,
                typename vinvValueType,        class ...vinvProperties>
       static void
-      getValues(        Kokkos::DynRankView<outputValueValueType,outputValueProperties...> outputValues,
-                        const Kokkos::DynRankView<inputPointValueType, inputPointProperties...>  inputPoints,
-                        const Kokkos::DynRankView<vinvValueType,       vinvProperties...>        vinv,
-                        const EOperator operatorType );
-      
+      getValues( const typename DeviceType::execution_space& space,
+                       Kokkos::DynRankView<outputValueValueType,outputValueProperties...> outputValues,
+                 const Kokkos::DynRankView<inputPointValueType, inputPointProperties...>  inputPoints,
+                 const Kokkos::DynRankView<vinvValueType,       vinvProperties...>        vinv,
+                 const EOperator operatorType );
+
       /**
          \brief See Intrepid2::Basis_HGRAD_LINE_Cn_FEM
       */
@@ -124,7 +92,7 @@ namespace Intrepid2 {
         const vinvViewType        _vinv;
         workViewType        _work;
         const ordinal_type        _opDn;
-        
+
         KOKKOS_INLINE_FUNCTION
         Functor(       outputValueViewType outputValues_,
                        inputPointViewType  inputPoints_,
@@ -133,12 +101,12 @@ namespace Intrepid2 {
                        const ordinal_type        opDn_ = 0 )
           : _outputValues(outputValues_), _inputPoints(inputPoints_), 
             _vinv(vinv_), _work(work_), _opDn(opDn_) {}
-        
+
         KOKKOS_INLINE_FUNCTION
         void operator()(const size_type iter) const {
           const auto ptBegin = Util<ordinal_type>::min(iter*numPtsEval,    _inputPoints.extent(0));
           const auto ptEnd   = Util<ordinal_type>::min(ptBegin+numPtsEval, _inputPoints.extent(0));
-          
+
           const auto ptRange = Kokkos::pair<ordinal_type,ordinal_type>(ptBegin, ptEnd);
           const auto input   = Kokkos::subview( _inputPoints, ptRange, Kokkos::ALL() );
 
@@ -161,14 +129,14 @@ namespace Intrepid2 {
           default: {
             INTREPID2_TEST_FOR_ABORT( true,
                                       ">>> ERROR: (Intrepid2::Basis_HGRAD_LINE_Cn_FEM::Functor) operator is not supported");
-            
+
           }
           }
         }
       };
     };
   }
-  
+
   template<typename DeviceType = void,
            typename outputValueType = double,
            typename pointValueType = double>
@@ -176,16 +144,17 @@ namespace Intrepid2 {
     : public Basis<DeviceType,outputValueType,pointValueType> {
   public:
     using BasisBase = Basis<DeviceType,outputValueType,pointValueType>;
-      
+    using typename BasisBase::ExecutionSpace;
+
     using HostBasis = Basis_HGRAD_LINE_Cn_FEM<typename Kokkos::HostSpace::device_type,outputValueType,pointValueType>;
-    
-    using OrdinalTypeArray1DHost = typename BasisBase::OrdinalTypeArray1DHost;
-    using OrdinalTypeArray2DHost = typename BasisBase::OrdinalTypeArray2DHost;
-    using OrdinalTypeArray3DHost = typename BasisBase::OrdinalTypeArray3DHost;
-    
-    using OutputViewType = typename BasisBase::OutputViewType;
-    using PointViewType  = typename BasisBase::PointViewType ;
-    using ScalarViewType = typename BasisBase::ScalarViewType;
+
+    using typename BasisBase::OrdinalTypeArray1DHost;
+    using typename BasisBase::OrdinalTypeArray2DHost;
+    using typename BasisBase::OrdinalTypeArray3DHost;
+
+    using typename BasisBase::OutputViewType;
+    using typename BasisBase::PointViewType ;
+    using typename BasisBase::ScalarViewType;
 
   private:
 
@@ -203,9 +172,10 @@ namespace Intrepid2 {
 
     virtual
     void
-    getValues(       OutputViewType outputValues,
-                     const PointViewType  inputPoints,
-                     const EOperator operatorType = OPERATOR_VALUE ) const override {
+    getValues( const ExecutionSpace& space,
+                     OutputViewType outputValues,
+               const PointViewType  inputPoints,
+               const EOperator operatorType = OPERATOR_VALUE ) const override {
 #ifdef HAVE_INTREPID2_DEBUG
       Intrepid2::getValues_HGRAD_Args(outputValues,
                                       inputPoints,
@@ -215,18 +185,36 @@ namespace Intrepid2 {
 #endif
       constexpr ordinal_type numPtsPerEval = 1;
       Impl::Basis_HGRAD_LINE_Cn_FEM::
-        getValues<DeviceType,numPtsPerEval>( outputValues,
-                                                inputPoints,
-                                                this->vinv_,
-                                                operatorType );
+        getValues<DeviceType,numPtsPerEval>(space,
+                                            outputValues,
+                                            inputPoints,
+                                            this->vinv_,
+                                            operatorType);
     }
+
+    virtual void 
+    getScratchSpaceSize(      ordinal_type& perTeamSpaceSize,
+                              ordinal_type& perThreadSpaceSize,
+                        const PointViewType inputPointsconst,
+                        const EOperator operatorType = OPERATOR_VALUE) const override;
+
+    KOKKOS_INLINE_FUNCTION
+    virtual void 
+    getValues(       
+          OutputViewType outputValues,
+      const PointViewType  inputPoints,
+      const EOperator operatorType,
+      const typename Kokkos::TeamPolicy<typename DeviceType::execution_space>::member_type& team_member,
+      const typename DeviceType::execution_space::scratch_memory_space & scratchStorage, 
+      const ordinal_type subcellDim = -1,
+      const ordinal_type subcellOrdinal = -1) const override;
 
     virtual
     void
     getDofCoords( ScalarViewType dofCoords ) const override {
 #ifdef HAVE_INTREPID2_DEBUG
       // Verify rank of output array.
-      INTREPID2_TEST_FOR_EXCEPTION( dofCoords.rank() != 2, std::invalid_argument,
+      INTREPID2_TEST_FOR_EXCEPTION( rank(dofCoords) != 2, std::invalid_argument,
                                     ">>> ERROR: (Intrepid2::Basis_HGRAD_LINE_Cn_FEM::getDofCoords) rank = 2 required for dofCoords array");
       // Verify 0th dimension of output array.
       INTREPID2_TEST_FOR_EXCEPTION( static_cast<ordinal_type>(dofCoords.extent(0)) != this->getCardinality(), std::invalid_argument,
@@ -243,7 +231,7 @@ namespace Intrepid2 {
     getDofCoeffs( ScalarViewType dofCoeffs ) const override {
 #ifdef HAVE_INTREPID2_DEBUG
       // Verify rank of output array.
-      INTREPID2_TEST_FOR_EXCEPTION( dofCoeffs.rank() != 1, std::invalid_argument,
+      INTREPID2_TEST_FOR_EXCEPTION( rank(dofCoeffs) != 1, std::invalid_argument,
                                     ">>> ERROR: (Intrepid2::Basis_HGRAD_LINE_Cn_FEM::getdofCoeffs) rank = 1 required for dofCoeffs array");
       // Verify 0th dimension of output array.
       INTREPID2_TEST_FOR_EXCEPTION( static_cast<ordinal_type>(dofCoeffs.extent(0)) != this->getCardinality(), std::invalid_argument,
@@ -268,20 +256,20 @@ namespace Intrepid2 {
     getVandermondeInverse() const {
       return vinv_;
     }
-    
+
     ordinal_type
     getWorkSizePerPoint(const EOperator operatorType) const {
       return getPnCardinality<1>(this->basisDegree_);
     }
 
   /** \brief Creates and returns a Basis object whose DeviceType template argument is Kokkos::HostSpace::device_type, but is otherwise identical to this.
-      
+
          \return Pointer to the new Basis object.
       */
      virtual HostBasisPtr<outputValueType,pointValueType>
      getHostBasis() const override {
        auto hostBasis = Teuchos::rcp(new HostBasis(this->basisDegree_, pointType_));
-       
+
        return hostBasis;
      }
   };

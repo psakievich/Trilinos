@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020, 2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2023, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -36,9 +36,9 @@
 int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
                                   void_int *side_set_node_list_len)
 {
-  size_t    ii, i, j;
+  int64_t   ii, i, j;
   int64_t   num_side_sets, num_elem_blks, num_df, ndim;
-  size_t    list_len     = 0;
+  int64_t   list_len     = 0;
   int64_t   tot_num_elem = 0, tot_num_ss_elem = 0;
   void_int *elem_blk_ids   = NULL;
   int      *ss_elem_ndx    = NULL;
@@ -51,12 +51,12 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
   int err_stat = EX_NOERR;
   int status;
 
-  struct ex__elem_blk_parm *elem_blk_parms = NULL;
+  struct exi_elem_blk_parm *elem_blk_parms = NULL;
 
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -192,13 +192,13 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
     for (i = 0; i < tot_num_ss_elem; i++) {
       ss_elem_ndx_64[i] = i; /* init index array to current position */
     }
-    ex__iqsort64(side_set_elem_list, ss_elem_ndx_64, tot_num_ss_elem);
+    exi_iqsort64(side_set_elem_list, ss_elem_ndx_64, tot_num_ss_elem);
   }
   else {
     for (i = 0; i < tot_num_ss_elem; i++) {
       ss_elem_ndx[i] = i; /* init index array to current position */
     }
-    ex__iqsort(side_set_elem_list, ss_elem_ndx, tot_num_ss_elem);
+    exi_iqsort(side_set_elem_list, ss_elem_ndx, tot_num_ss_elem);
   }
 
   /* Allocate space for the element block ids */
@@ -227,7 +227,7 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
   }
 
   /* Allocate space for the element block params */
-  if (!(elem_blk_parms = calloc(num_elem_blks, sizeof(struct ex__elem_blk_parm)))) {
+  if (!(elem_blk_parms = calloc(num_elem_blks, sizeof(struct exi_elem_blk_parm)))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate space for element block params "
              "for file id %d",
@@ -247,7 +247,7 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
       id = ((int *)elem_blk_ids)[i];
     }
 
-    err_stat = ex__get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
+    err_stat = exi_get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
     if (err_stat != EX_NOERR) {
       goto cleanup;
     }
@@ -261,8 +261,8 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
   list_len = 0;
   j        = 0; /* The current element block... */
   for (ii = 0; ii < tot_num_ss_elem; ii++) {
-    size_t elem;
-    size_t side;
+    int64_t elem;
+    int64_t side;
     if (ints_64) {
       i    = ss_elem_ndx_64[ii];
       elem = ((int64_t *)side_set_elem_list)[i];
@@ -290,8 +290,8 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
 
     if (j >= num_elem_blks) {
       snprintf(errmsg, MAX_ERR_LENGTH,
-               "ERROR: Invalid element number %zu found in side set %" PRId64 " in file %d", elem,
-               side_set_id, exoid);
+               "ERROR: Invalid element number %" PRId64 " found in side set %" PRId64 " in file %d",
+               elem, side_set_id, exoid);
       ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
       err_stat = EX_FATAL;
       goto cleanup;
@@ -310,7 +310,8 @@ int ex_get_side_set_node_list_len(int exoid, ex_entity_id side_set_id,
     if (list_len != num_df) {
       snprintf(errmsg, MAX_ERR_LENGTH,
                "Warning: In side set %" PRId64 " the distribution factor count (%" PRId64
-               ") does not match the side set node list length (%zu). These should match and this "
+               ") does not match the side set node list length (%" PRId64
+               "). These should match and this "
                "may indicate a corrupt database in file %d",
                side_set_id, num_df, list_len, exoid);
       ex_err_fn(exoid, __func__, errmsg, EX_MSG);

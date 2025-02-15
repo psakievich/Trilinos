@@ -1,43 +1,11 @@
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //                 Belos: Block Linear Solvers Package
-//                  Copyright 2004 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ************************************************************************
-//@HEADER
+// Copyright 2004-2016 NTESS and the Belos contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 //
 // This driver reads a problem from a Harwell-Boeing (HB) file.
 // The right-hand-side corresponds to a randomly generated solution.
@@ -45,42 +13,39 @@
 // The problem is solver for multiple scalar types, and timings are reported.
 //
 // NOTE: No preconditioner is used in this case. 
-//
+
 #include "BelosConfigDefs.hpp"
 #include "BelosLinearProblem.hpp"
 #include "BelosTpetraAdapter.hpp"
 #include "BelosPseudoBlockCGSolMgr.hpp"
+
+#include <Tpetra_Core.hpp>
+#include <Tpetra_CrsMatrix.hpp>
+#include <Tpetra_DiagPrecond.hpp>
 
 // I/O for Harwell-Boeing files
 #include <Trilinos_Util_iohb.h>
 
 #include <Teuchos_CommandLineProcessor.hpp>
 #include <Teuchos_ScalarTraits.hpp>
-#include <Tpetra_Core.hpp>
-#include <Tpetra_CrsMatrix.hpp>
-#include <Tpetra_DiagPrecond.hpp>
 #include <Teuchos_TypeNameTraits.hpp>
-
-// No LAPACK support for Cholesky
-// #ifdef HAVE_TEUCHOS_QD
-// #include <qd/dd_real.h>
-// #include <qd/qd_real.h>
-// #include <qd/fpu.h>
-// #endif
 
 using namespace Teuchos;
 using namespace Belos;
+
 using Tpetra::Operator;
 using Tpetra::CrsMatrix;
 using Tpetra::DiagPrecond;
 using Tpetra::MultiVector;
 using Tpetra::Vector;
 using Tpetra::Map;
+
 using std::endl;
 using std::cout;
 using std::string;
 using std::setw;
 using std::vector;
+
 using Teuchos::tuple;
 
 bool proc_verbose = false, reduce_tol, precond = true, dumpdata = false;
@@ -94,20 +59,20 @@ int *colptr, *rowind;
 int mptestmypid = 0;
 
 ///////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
 template <class Scalar> 
 RCP<LinearProblem<Scalar,MultiVector<Scalar,int>,Operator<Scalar,int> > > buildProblem()
 {
-  typedef ScalarTraits<Scalar>         SCT;
-  typedef typename SCT::magnitudeType  MT;
-  typedef Operator<Scalar,int>         OP;
-  typedef MultiVector<Scalar,int>      MV;
-  typedef OperatorTraits<Scalar,MV,OP> OPT;
-  typedef MultiVecTraits<Scalar,MV>    MVT;
+  using SCT = typename ScalarTraits<Scalar>;
+  using MT = typename SCT::magnitudeType;
+  using OP = typename Operator<Scalar,int>;
+  using MV = typename MultiVector<Scalar,int>;
+  using OPT = typename OperatorTraits<Scalar,MV,OP>;
+  using MVT = typename MultiVecTraits<Scalar,MV>;
+
   RCP<CrsMatrix<Scalar,int> > A = rcp(new CrsMatrix<Scalar,int>(*vmap,rnnzmax));
   if (mptestmypid == 0) {
     // HB format is compressed column. CrsMatrix is compressed row.
-    const float *fptr = fvals;
+    const MT *fptr = fvals;
     const int *rptr = rowind;
     for (int c=0; c<dim; ++c) {
       for (int colnnz=0; colnnz < colptr[c+1]-colptr[c]; ++colnnz) {
@@ -118,7 +83,7 @@ RCP<LinearProblem<Scalar,MultiVector<Scalar,int>,Operator<Scalar,int> > > buildP
       }
     }
   }
-  // distribute matrix data to other nodes
+  // Distribute matrix data to other nodes
   A->fillComplete();
   // Create initial MV and solution MV
   RCP<MV> B, X;
@@ -126,7 +91,7 @@ RCP<LinearProblem<Scalar,MultiVector<Scalar,int>,Operator<Scalar,int> > > buildP
   // Set LHS to actX
   {
     typename MultiVector<Scalar,int>::double_pointer Xvals = X->extractView2D();
-    typename MultiVector<float,int>::const_double_pointer actXvals = actX->extractConstView2D();
+    typename MultiVector<Scalar,int>::const_double_pointer actXvals = actX->extractConstView2D();
     for (Teuchos_Ordinal j=0; j<numrhs; ++j) {
       std::copy(actXvals[j], actXvals[j]+actX->myLength(), Xvals[j]);
     }
@@ -134,10 +99,11 @@ RCP<LinearProblem<Scalar,MultiVector<Scalar,int>,Operator<Scalar,int> > > buildP
   B = rcp( new MV(*vmap,numrhs) );
   OPT::Apply( *A, *X, *B );
   MVT::MvInit( *X, 0.0 );
+
   // Construct a linear problem instance with zero initial MV
   RCP<LinearProblem<Scalar,MV,OP> > problem = rcp( new LinearProblem<Scalar,MV,OP>(A,X,B) );
   problem->setLabel(Teuchos::typeName(SCT::one()));
-  // diagonal preconditioner
+  // Diagonal preconditioner
   if (precond) {
     Vector<Scalar,int> diags(A->getRowMap());
     A->getLocalDiagCopy(diags);
@@ -152,18 +118,17 @@ RCP<LinearProblem<Scalar,MultiVector<Scalar,int>,Operator<Scalar,int> > > buildP
   return problem;
 }
 
-
-///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 template <class Scalar>
 bool runTest(double ltol, double times[], int &numIters, RCP<MultiVector<Scalar,int> > &X) 
 {
-  typedef ScalarTraits<Scalar>         SCT;
-  typedef typename SCT::magnitudeType  MT;
-  typedef Operator<Scalar,int>         OP;
-  typedef MultiVector<Scalar,int>      MV;
-  typedef OperatorTraits<Scalar,MV,OP> OPT;
-  typedef MultiVecTraits<Scalar,MV>    MVT;
+
+  using SCT = typename ScalarTraits<Scalar>;
+  using MT = typename SCT::magnitudeType;
+  using OP = typename Operator<Scalar,int>;
+  using MV = typename MultiVector<Scalar,int>;
+  using OPT = typename OperatorTraits<Scalar,MV,OP>;
+  using MVT = typename MultiVecTraits<Scalar,MV>;
 
   const Scalar ONE  = SCT::one();
   mptestpl.set<MT>( "Convergence Tolerance", ltol );         // Relative convergence tolerance requested
@@ -205,9 +170,7 @@ bool runTest(double ltol, double times[], int &numIters, RCP<MultiVector<Scalar,
   if (ret == Converged) {
     if (proc_verbose) cout << endl;
     if (mptestmypid==0) cout << "Computing residuals..." << endl;
-    //
     // Compute actual residuals.
-    //
     RCP<const OP> A = problem->getOperator();
     X = problem->getLHS();
     RCP<const MV> B = problem->getRHS();
@@ -230,17 +193,13 @@ bool runTest(double ltol, double times[], int &numIters, RCP<MultiVector<Scalar,
   return true;
 }
 
-
-///////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////
 int main(int argc, char *argv[]) 
 {
   Tpetra::ScopeGuard tpetraScope(&argc,&argv);
   RCP<const Comm<int> > comm = Tpetra::getDefaultComm();
 
-  //
   // Get test parameters from command-line processor
-  //  
   bool verbose = false, debug = false;
   bool printX = false;
   int frequency = -1;  // how often residuals are printed by solver
@@ -277,20 +236,18 @@ int main(int argc, char *argv[])
   proc_verbose = ( verbose && (mptestmypid==0) );
   if (proc_verbose) cout << Belos_Version() << endl << endl;
 
-  //
   // Get the data (double) from the HB file and build the Map,Matrix
-  //
   int nnz, info;
   nnz = -1;
   if (mptestmypid == 0) {
     int dim2;
     double *dvals;
     info = readHB_newmat_double(filename.c_str(),&dim,&dim2,&nnz,&colptr,&rowind,&dvals);
-    // truncate data into float
+    // Truncate data into float
     fvals = new float[nnz];
     std::copy( dvals, dvals+nnz, fvals );
     free(dvals);
-    // find maximum NNZ over all rows
+    // Find maximum NNZ over all rows
     vector<int> rnnz(dim,0);
     for (int *ri=rowind; ri<rowind+nnz; ++ri) {
       ++rnnz[*ri-1];
@@ -301,7 +258,7 @@ int main(int argc, char *argv[])
     rnnzmax = *std::max_element(rnnz.begin(),rnnz.end());
   }
   else {
-    // address uninitialized data warnings
+    // Address uninitialized data warnings
     fvals = NULL;
     colptr = NULL;
     rowind = NULL;
@@ -317,13 +274,12 @@ int main(int argc, char *argv[])
     }
     return -1;
   }
-
-  // create map
+  // Create map
   vmap = rcp(new Map<int>(dim,0,comm));
-  // create a consistent LHS
+  // Create a consistent LHS
   actX = rcp(new MultiVector<float,int>(*vmap,numrhs));
   MultiVecTraits<float,MultiVector<float,int> >::MvRandom(*actX);
-  // create the parameter list
+  // Create the parameter list
   if (maxiters == -1) {
     maxiters = dim/blocksize - 1; // maximum number of iterations to run
   }
@@ -344,9 +300,7 @@ int main(int argc, char *argv[])
     }
   }
 
-  //
-  // **********Print out information about problem*******************
-  //
+  // Print out information about problem
   if (mptestmypid==0) {
     cout << "Filename: " << filename << endl;
     cout << "Dimension of matrix: " << dim << endl;
@@ -358,7 +312,7 @@ int main(int argc, char *argv[])
     cout << endl;
   }
 
-  // run tests for different scalar types
+  // Run tests for different scalar types
   RCP<MultiVector<float,int> > Xf;
   RCP<MultiVector<double,int> > Xd;
   double ltol = tol;
@@ -383,13 +337,13 @@ int main(int argc, char *argv[])
     // Xd->describe(fos,Teuchos::VERB_EXTREME);
   }
 
-  // test the relative error between Xf and Xd
+  // Test the relative error between Xf and Xd
   if (mptestmypid==0) {
     cout << "Relative error |xdi - xfi|/|xdi|" << endl;
     cout << "--------------------------------" << endl;
   }
   for (int j=0; j<numrhs; ++j) {
-    // compute |xdj-xfj|/|xdj|
+    // Compute |xdj-xfj|/|xdj|
     RCP<Vector<float,int> > xfj = (*Xf)(j);
     RCP<Vector<double,int> > xdj = (*Xd)(j);
     double mag = xdj->norm2();
@@ -408,7 +362,7 @@ int main(int argc, char *argv[])
   Xf = Teuchos::null;
   Xd = Teuchos::null;
 
-  // done with the matrix data now; delete it
+  // Done with the matrix data now; delete it
   if (mptestmypid == 0) {
     free( fvals );
     free( colptr );
@@ -446,11 +400,8 @@ int main(int argc, char *argv[])
     if (mptestmypid==0) cout << "\nEnd Result: TEST FAILED" << endl;	
     return -1;
   }
-  //
+  
   // Default return value
-  //
   if (mptestmypid==0) cout << "\nEnd Result: TEST PASSED" << endl;
   return 0;
 }
-
-

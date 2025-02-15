@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -41,7 +41,7 @@ int ex_get_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   const char *dim_num_maps;
 
   EX_FUNC_ENTER();
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -81,7 +81,7 @@ int ex_get_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   }
 
   /* Check input parameters for a valid range of numbers */
-  if (ent_start <= 0 || ent_start > num_mobj) {
+  if (ent_start <= 0 || ent_start > (int64_t)num_mobj) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: start count is invalid in file id %d", exoid);
     ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
     EX_FUNC_LEAVE(EX_FATAL);
@@ -93,7 +93,7 @@ int ex_get_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
-  if (ent_start + ent_count - 1 > num_mobj) {
+  if (ent_start + ent_count - 1 > (int64_t)num_mobj) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: start+count-1 is larger than element count in file id %d", exoid);
     ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
@@ -109,7 +109,7 @@ int ex_get_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   }
 
   /* Lookup index of element map id property array */
-  id_ndx = ex__id_lkup(exoid, map_type, map_id);
+  id_ndx = exi_id_lkup(exoid, map_type, map_id);
   if (id_ndx <= 0) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to locate %s id %" PRId64 " in id variable in file id %d",
@@ -119,7 +119,7 @@ int ex_get_partial_num_map(int exoid, ex_entity_type map_type, ex_entity_id map_
   }
 
   /* inquire id's of previously defined dimensions and variables */
-  if ((status = nc_inq_varid(exoid, ex__name_of_map(map_type, id_ndx), &var_id)) != NC_NOERR) {
+  if ((status = nc_inq_varid(exoid, exi_name_of_map(map_type, id_ndx), &var_id)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate %s %" PRId64 " in file id %d",
              ex_name_of_object(map_type), map_id, exoid);
     ex_err_fn(exoid, __func__, errmsg, status);

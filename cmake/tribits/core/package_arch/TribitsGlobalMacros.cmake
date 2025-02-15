@@ -1,48 +1,23 @@
 # @HEADER
-# ************************************************************************
-#
+# *****************************************************************************
 #            TriBITS: Tribal Build, Integrate, and Test System
-#                    Copyright 2013 Sandia Corporation
 #
-# Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-# the U.S. Government retains certain rights in this software.
-#
-# Redistribution and use in source and binary forms, with or without
-# modification, are permitted provided that the following conditions are
-# met:
-#
-# 1. Redistributions of source code must retain the above copyright
-# notice, this list of conditions and the following disclaimer.
-#
-# 2. Redistributions in binary form must reproduce the above copyright
-# notice, this list of conditions and the following disclaimer in the
-# documentation and/or other materials provided with the distribution.
-#
-# 3. Neither the name of the Corporation nor the names of the
-# contributors may be used to endorse or promote products derived from
-# this software without specific prior written permission.
-#
-# THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-# EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-# PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-# NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-#
-# ************************************************************************
+# Copyright 2013-2016 NTESS and the TriBITS contributors.
+# SPDX-License-Identifier: BSD-3-Clause
+# *****************************************************************************
 # @HEADER
 
 # Standard TriBITS system includes
-include(TribitsConstants)
+
+include("${CMAKE_CURRENT_LIST_DIR}/../utils/TribitsGitRepoVersionInfo.cmake")
+
+include("${CMAKE_CURRENT_LIST_DIR}/../common/TribitsConstants.cmake")
+
+include("${CMAKE_CURRENT_LIST_DIR}/../test_support/TribitsTestCategories.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../test_support/TribitsAddTestHelpers.cmake")
+
 include(TribitsSetupMPI)
-include(TribitsTestCategories)
 include(TribitsGeneralMacros)
-include(TribitsAddTestHelpers)
 include(TribitsVerbosePrintVar)
 include(TribitsProcessEnabledTpls)
 include(TribitsInstallHeaders)
@@ -50,7 +25,6 @@ include(TribitsGetVersionDate)
 include(TribitsReportInvalidTribitsUsage)
 include(TribitsReadAllProjectDepsFilesCreateDepsGraph)
 include(TribitsAdjustPackageEnables)
-include(TribitsGitRepoVersionInfo)
 include(TribitsSetUpEnabledOnlyDependencies)
 include(TribitsConfigureTiming)
 
@@ -464,13 +438,6 @@ macro(tribits_define_global_options_and_define_extra_repos)
     "Make the ${PROJECT_NAME} configure process verbose."
     )
 
-  if ("${${PROJECT_NAME}_TRACE_ADD_TEST_DEFAULT}" STREQUAL "")
-    set(${PROJECT_NAME}_TRACE_ADD_TEST_DEFAULT  ${${PROJECT_NAME}_VERBOSE_CONFIGURE})
-  endif()
-  advanced_set(${PROJECT_NAME}_TRACE_ADD_TEST ${${PROJECT_NAME}_TRACE_ADD_TEST_DEFAULT}
-    CACHE BOOL
-    "Show a configure time trace of every test added or not added any why (one line)." )
-
   advanced_option(${PROJECT_NAME}_DUMP_LINK_LIBS
     "Dump the link libraries for every library and executable created."
     "${${PROJECT_NAME}_VERBOSE_CONFIGURE}" )
@@ -689,6 +656,9 @@ macro(tribits_define_global_options_and_define_extra_repos)
     CACHE BOOL
     "Generate the ${PROJECT_NAME}RepoVersion.txt file.")
 
+  tribits_advanced_set_cache_var_and_default(${PROJECT_NAME}_SHOW_GIT_COMMIT_PARENTS
+    BOOL OFF "Show parents' commit info in the repo version output.")
+
   if ("${${PROJECT_NAME}_GENERATE_VERSION_DATE_FILES_DEFAULT}" STREQUAL "")
     set(${PROJECT_NAME}_GENERATE_VERSION_DATE_FILES_DEFAULT OFF)
   endif()
@@ -836,7 +806,7 @@ macro(tribits_define_global_options_and_define_extra_repos)
     "Output XML file containing ${PROJECT_NAME} dependenices used by tools (if not empty)." )
 
   if(${PROJECT_NAME}_DEPS_DEFAULT_OUTPUT_DIR AND
-    ${PROJECT_NAME}_DEPS_XML_OUTPUT_FILE AND PYTHON_EXECUTABLE
+    ${PROJECT_NAME}_DEPS_XML_OUTPUT_FILE AND Python3_EXECUTABLE
     )
     set(${PROJECT_NAME}_CDASH_DEPS_XML_OUTPUT_FILE_DEFAULT
       "${${PROJECT_NAME}_DEPS_DEFAULT_OUTPUT_DIR}/${${PROJECT_NAME}_CDASH_SUBPROJECT_DEPS_XML_FILE_NAME}" )
@@ -849,7 +819,7 @@ macro(tribits_define_global_options_and_define_extra_repos)
     "Output XML file used by CDash in ${PROJECT_NAME}-independent format (if not empty)." )
 
   if(${PROJECT_NAME}_DEPS_DEFAULT_OUTPUT_DIR AND
-    ${PROJECT_NAME}_DEPS_XML_OUTPUT_FILE AND PYTHON_EXECUTABLE
+    ${PROJECT_NAME}_DEPS_XML_OUTPUT_FILE AND Python3_EXECUTABLE
     )
     set(${PROJECT_NAME}_DEPS_HTML_OUTPUT_FILE_DEFAULT
       "${${PROJECT_NAME}_DEPS_DEFAULT_OUTPUT_DIR}/${${PROJECT_NAME}_PACKAGE_DEPS_TABLE_HTML_FILE_NAME}" )
@@ -1211,48 +1181,41 @@ endmacro()
 
 # Get the versions of all the git repos
 #
-function(tribits_generate_repo_version_file_string  PROJECT_REPO_VERSION_FILE_STRING_OUT)
+function(tribits_generate_repo_version_file_string  projectRepoVersionFileStrOut)
 
-  set(REPO_VERSION_FILE_STR "")
+  set(projectRepoVersionFileStr "")
 
   tribits_generate_single_repo_version_string(
-     ${CMAKE_CURRENT_SOURCE_DIR}
-     SINGLE_REPO_VERSION)
-  string(APPEND REPO_VERSION_FILE_STR
+    ${CMAKE_CURRENT_SOURCE_DIR} singleRepoVersionStr
+    INCLUDE_COMMIT_PARENTS ${${PROJECT_NAME}_SHOW_GIT_COMMIT_PARENTS})
+  string(APPEND projectRepoVersionFileStr
     "*** Base Git Repo: ${PROJECT_NAME}\n"
-    "${SINGLE_REPO_VERSION}\n" )
+    "${singleRepoVersionStr}\n" )
 
-  set(EXTRAREPO_IDX 0)
-  foreach(EXTRA_REPO ${${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES})
-
-    #print_var(EXTRA_REPO)
-    #print_var(EXTRAREPO_IDX)
-    #print_var(${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES_DIRS)
+  set(extraRepoIdx 0)
+  foreach(extraRepo ${${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES})
 
     if (${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES_DIRS)
       # Read from an extra repo file with potentially different dir.
-      list(GET ${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES_DIRS ${EXTRAREPO_IDX}
-        EXTRAREPO_DIR )
+      list(GET ${PROJECT_NAME}_ALL_EXTRA_REPOSITORIES_DIRS ${extraRepoIdx}
+        extraRepoDir )
     else()
        # Not read from extra repo file so dir is same as name
-       set(EXTRAREPO_DIR ${EXTRA_REPO})
+       set(extraRepoDir ${extraRepo})
     endif()
-    #print_var(EXTRAREPO_DIR)
 
     tribits_generate_single_repo_version_string(
-       "${CMAKE_CURRENT_SOURCE_DIR}/${EXTRAREPO_DIR}"
-       SINGLE_REPO_VERSION)
-    string(APPEND REPO_VERSION_FILE_STR
-      "*** Git Repo: ${EXTRAREPO_DIR}\n"
-      "${SINGLE_REPO_VERSION}\n" )
+       "${CMAKE_CURRENT_SOURCE_DIR}/${extraRepoDir}" singleRepoVersionStr
+       INCLUDE_COMMIT_PARENTS ${${PROJECT_NAME}_SHOW_GIT_COMMIT_PARENTS})
+    string(APPEND projectRepoVersionFileStr
+      "*** Git Repo: ${extraRepoDir}\n"
+      "${singleRepoVersionStr}\n" )
 
-    #print_var(REPO_VERSION_FILE_STR)
-
-    math(EXPR EXTRAREPO_IDX "${EXTRAREPO_IDX}+1")
+    math(EXPR extraRepoIdx "${extraRepoIdx}+1")
 
   endforeach()
 
-  set(${PROJECT_REPO_VERSION_FILE_STRING_OUT} ${REPO_VERSION_FILE_STR} PARENT_SCOPE)
+  set(${projectRepoVersionFileStrOut} ${projectRepoVersionFileStr} PARENT_SCOPE)
 
 endfunction()
 
@@ -1264,17 +1227,17 @@ endfunction()
 #
 function(tribits_generate_repo_version_output_and_file)
   # Get the repos versions
-  tribits_generate_repo_version_file_string(PROJECT_REPO_VERSION_FILE_STRING)
+  tribits_generate_repo_version_file_string(projectRepoVersionFileStr)
   # Print the versions
   message("\n${PROJECT_NAME} repos versions:\n"
     "--------------------------------------------------------------------------------\n"
-    "${PROJECT_REPO_VERSION_FILE_STRING}"
+    "${projectRepoVersionFileStr}"
     " --------------------------------------------------------------------------------\n"
     )
   #) Write out the version file
   file(WRITE
     "${CMAKE_CURRENT_BINARY_DIR}/${${PROJECT_NAME}_REPO_VERSION_FILE_NAME}"
-    "${PROJECT_REPO_VERSION_FILE_STRING}")
+    "${projectRepoVersionFileStr}")
 endfunction()
 
 
@@ -2072,17 +2035,20 @@ macro(tribits_configure_enabled_packages)
         tribits_trace_file_processing(PACKAGE  ADD_SUBDIR
           "${TRIBITS_PACKAGE_CMAKELIST_FILE}")
         if (NOT ${TRIBITS_PACKAGE}_SOURCE_DIR STREQUAL ${PROJECT_NAME}_SOURCE_DIR)
-          add_subdirectory(${${TRIBITS_PACKAGE}_SOURCE_DIR} ${${TRIBITS_PACKAGE}_BINARY_DIR})
+          add_subdirectory(${${TRIBITS_PACKAGE}_SOURCE_DIR}
+            ${${TRIBITS_PACKAGE}_BINARY_DIR})
         else()
           include("${TRIBITS_PACKAGE_CMAKELIST_FILE}")
         endif()
-        if (NOT ${PACKAGE_NAME}_TRIBITS_PACKAGE_POSTPROCESS)
+        if ((NOT ${PACKAGE_NAME}_TRIBITS_PACKAGE_POSTPROCESS) AND
+	    (NOT TARGET ${PACKAGE_NAME}::all_libs)
+          )
           tribits_report_invalid_tribits_usage(
             "ERROR: Forgot to call tribits_package_postprocess() in"
             " ${TRIBITS_PACKAGE_CMAKELIST_FILE}")
         endif()
 
-        list(APPEND ENABLED_PACKAGE_LIBS_TARGETS ${TRIBITS_PACKAGE}_libs)
+        list(APPEND ENABLED_PACKAGE_LIBS_TARGETS ${TRIBITS_PACKAGE}::all_libs)
         list(APPEND ${PROJECT_NAME}_LIBRARIES ${${TRIBITS_PACKAGE}_LIBRARIES})
 
         tribits_package_config_code_stop_timer(PROCESS_THIS_PACKAGE_TIME_START_SECONDS

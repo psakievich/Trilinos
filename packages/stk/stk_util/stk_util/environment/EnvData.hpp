@@ -82,6 +82,8 @@ struct EnvData
   static EnvData &instance();
   EnvData();
 
+  void initialize(MPI_Comm worldComm);
+
   ~EnvData();
 
   static void setInputFileName(std::string value);
@@ -106,7 +108,6 @@ struct EnvData
   bool                  m_inputFileRequired;
   bool                  m_checkSubCycle;
   bool                  m_checkSmRegion;
-  bool                  m_isZapotec;
 
   MPI_Comm		m_worldComm;
 

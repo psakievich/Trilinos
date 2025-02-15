@@ -17,6 +17,7 @@ from contextlib import contextmanager
 
 ACCESS = os.getenv("ACCESS", "@ACCESSDIR@")
 sys.path.append(os.path.join(ACCESS, "lib"))
+sys.path.append(os.path.join(ACCESS, "lib64"))
 import exodus as exo
 
 
@@ -58,6 +59,19 @@ class TestExodus(unittest.TestCase):
         with self.assertRaises(AssertionError):
             with exo.exodus(self.temp_exo_path, mode="r"):
                 self.assertFalse(True)
+
+    def test_ex_init_params(self):
+        ex_pars = exo.ex_init_params(
+            num_dim=2,
+            num_nodes=9,
+            num_elem=4,
+            num_elem_blk=1,
+            num_assembly=0,
+            num_blob=0,
+        )
+        new_temp_exo_path = os.path.join(self.tempdir.name, "newexodusfile.e")
+        with exo.exodus(new_temp_exo_path, mode="w+", init_params=ex_pars) as exo_file:
+            exo_file.summarize()
 
     def test_copy_opened_in_append_mode(self):
         new = exo.assembly(
@@ -140,6 +154,23 @@ class TestExodus(unittest.TestCase):
                     temp_exofile.put_elem_attr_values(elem_id, name, values)
                 self.assertEqual(3.14159, temp_exofile.get_elem_attr_values(elem_id, "Scale")[0])
                 self.assertEqual(1.0, temp_exofile.get_elem_attr_values(elem_id, "Units")[0])
+
+    def test_get_variable_values(self):
+        with exo.exodus(self.temp_exo_path, 'a') as temp_exofile:
+            elem_ids = temp_exofile.get_ids("EX_ELEM_BLOCK")
+            exo.add_variables(temp_exofile, element_vars=[('fake_variable', elem_ids)])
+            for elem_id in elem_ids:
+                temp_exofile.put_variable_values("EX_ELEM_BLOCK", elem_id, "fake_variable", 1, [3.14159])
+                self.assertEqual(3.14159, temp_exofile.get_variable_values("EX_ELEM_BLOCK", elem_id, "fake_variable", 1)[0])
+
+    def test_get_variable_values_time(self):
+        with exo.exodus(self.temp_exo_path, 'a') as temp_exofile:
+            elem_ids = temp_exofile.get_ids("EX_ELEM_BLOCK")
+            exo.add_variables(temp_exofile, element_vars=[('fake_variable', elem_ids)])
+            for elem_id in elem_ids:
+                for time_step, val in enumerate([1, 2, 3.14159]):
+                    temp_exofile.put_variable_values("EX_ELEM_BLOCK", elem_id, "fake_variable", time_step + 1, [val])
+            self.assertEqual([1.0, 2.0, 3.14159], list(temp_exofile.get_variable_values_time("EX_ELEM_BLOCK", 1, "fake_variable", 1, 3)))
 
     def test_get_assemblies(self):
         with exo.exodus(self.temp_exo_path) as temp_exofile:

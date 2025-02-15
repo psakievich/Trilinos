@@ -1,44 +1,10 @@
 // @HEADER
+// *****************************************************************************
+//           Amesos2: Templated Direct Sparse Solver Package
 //
-// ***********************************************************************
-//
-//           Amesos2: Templated Direct Sparse Solver Package 
-//                  Copyright 2011 Sandia Corporation
-//
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 
@@ -91,13 +57,14 @@ namespace Amesos2 {
   public:
     // Give our base class access to our private implementation functions
     friend class MatrixAdapter< DerivedMat >;
-						 
+                                                 
     typedef MatrixTraits<Epetra_RowMatrix>::scalar_t                 scalar_t;
     typedef MatrixTraits<Epetra_RowMatrix>::local_ordinal_t   local_ordinal_t;
     typedef MatrixTraits<Epetra_RowMatrix>::global_ordinal_t global_ordinal_t;
     typedef MatrixTraits<Epetra_RowMatrix>::node_t                     node_t;
 
     typedef DerivedMat                                               matrix_t;
+    typedef Tpetra::Map<local_ordinal_t,global_ordinal_t,node_t>     map_t;
 
   private:
     typedef MatrixAdapter< DerivedMat >                               super_t;
@@ -114,18 +81,18 @@ namespace Amesos2 {
 
     AbstractConcreteMatrixAdapter(RCP<matrix_t> m);
 
-  public:			// these functions should technically be private
+  public:                        // these functions should technically be private
 
     // implementation functions
     void getGlobalRowCopy_impl(global_ordinal_t row,
-			       const Teuchos::ArrayView<global_ordinal_t>& indices,
-			       const Teuchos::ArrayView<scalar_t>& vals,
-			       size_t& nnz) const;
+                               const Teuchos::ArrayView<global_ordinal_t>& indices,
+                               const Teuchos::ArrayView<scalar_t>& vals,
+                               size_t& nnz) const;
     
     void getGlobalColCopy_impl(global_ordinal_t col,
-			       const Teuchos::ArrayView<global_ordinal_t>& indices,
-			       const Teuchos::ArrayView<scalar_t>& vals,
-			       size_t& nnz) const;
+                               const Teuchos::ArrayView<global_ordinal_t>& indices,
+                               const Teuchos::ArrayView<scalar_t>& vals,
+                               size_t& nnz) const;
 
     template<typename KV_GO, typename KV_S>
     void getGlobalRowCopy_kokkos_view_impl(global_ordinal_t row,
@@ -155,19 +122,13 @@ namespace Amesos2 {
 
     // Brunt of the work is put on the implementation for converting
     // their maps to a Tpetra::Map
-    const RCP<const Tpetra::Map<local_ordinal_t,
-				global_ordinal_t,
-				node_t> >
+    const RCP<const map_t>
     getMap_impl() const;
 
-    const RCP<const Tpetra::Map<local_ordinal_t,
-				global_ordinal_t,
-				node_t> >
+    const RCP<const map_t>
     getRowMap_impl() const;
 
-    const RCP<const Tpetra::Map<local_ordinal_t,
-				global_ordinal_t,
-				node_t> >
+    const RCP<const map_t>
     getColMap_impl() const;
 
     const RCP<const Teuchos::Comm<int> > getComm_impl() const;
@@ -179,7 +140,15 @@ namespace Amesos2 {
     // Because instantiation of the subclasses could be wildly
     // different (cf subclasses of Epetra_RowMatrix), this method
     // hands off implementation to the adapter for the subclass
-    RCP<const super_t> get_impl(const Teuchos::Ptr<const Tpetra::Map<local_ordinal_t,global_ordinal_t,node_t> > map, EDistribution distribution = ROOTED) const;
+    RCP<const super_t> get_impl(const Teuchos::Ptr<const map_t> map, EDistribution distribution = ROOTED) const;
+    RCP<const super_t> reindex_impl(Teuchos::RCP<const map_t> &contigRowMap,
+                                    Teuchos::RCP<const map_t> &contigColMap,
+                                    const EPhase current_phase) const;
+    template<typename KV_S, typename KV_GO, typename KV_GS, typename host_ordinal_type_array, typename host_scalar_type_array>
+    local_ordinal_t gather_impl(KV_S& nzvals, KV_GO& indices, KV_GS& pointers,
+                                host_ordinal_type_array &recvCounts, host_ordinal_type_array &recvDispls,
+                                host_ordinal_type_array &transpose_map, host_scalar_type_array &nzvals_t,
+                                bool column_major, EPhase current_phase) const;
 
     using spmtx_ptr_t = typename MatrixTraits<DerivedMat>::sparse_ptr_type;
     using spmtx_idx_t = typename MatrixTraits<DerivedMat>::sparse_idx_type;
@@ -216,4 +185,4 @@ namespace Amesos2 {
 
 } // end namespace Amesos2
 
-#endif	// AMESOS2_EPETRAROWMATRIX_ABSTRACTMATRIXADAPTER_DECL_HPP
+#endif // AMESOS2_EPETRAROWMATRIX_ABSTRACTMATRIXADAPTER_DECL_HPP

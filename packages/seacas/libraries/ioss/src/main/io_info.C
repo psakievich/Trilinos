@@ -1,16 +1,61 @@
-// Copyright(C) 1999-2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
 // See packages/seacas/LICENSE for details
 
 #include "io_info.h"
-#include <Ioss_Hex8.h>
-#include <Ioss_Sort.h>
+
+#include "Ioss_Hex8.h"
+#include "Ioss_Sort.h"
+#include "Ioss_StructuredBlock.h"
+#include "Ioss_ZoneConnectivity.h"
+#include <fmt/core.h>
+#include <fmt/ranges.h>
+#include <stdint.h>
 #include <tokenize.h>
+
 #define FMT_DEPRECATED_OSTREAM
+#include <cstddef>
+#include <cstdlib>
 #include <fmt/format.h>
-#include <fmt/ostream.h>
+#include <iostream>
+#include <string>
+#include <vector>
+
+#include "Ioss_Assembly.h"
+#include "Ioss_Blob.h"
+#include "Ioss_BoundingBox.h"
+#include "Ioss_CoordinateFrame.h"
+#include "Ioss_DBUsage.h"
+#include "Ioss_DataSize.h"
+#include "Ioss_DatabaseIO.h"
+#include "Ioss_EdgeBlock.h"
+#include "Ioss_EdgeSet.h"
+#include "Ioss_ElementBlock.h"
+#include "Ioss_ElementSet.h"
+#include "Ioss_ElementTopology.h"
+#include "Ioss_FaceBlock.h"
+#include "Ioss_FaceSet.h"
+#include "Ioss_Field.h"
+#include "Ioss_GroupingEntity.h"
+#include "Ioss_IOFactory.h"
+#include "Ioss_NodeBlock.h"
+#include "Ioss_NodeSet.h"
+#include "Ioss_ParallelUtils.h"
+#include "Ioss_Property.h"
+#include "Ioss_PropertyManager.h"
+#include "Ioss_Region.h"
+#include "Ioss_SideBlock.h"
+#include "Ioss_SideSet.h"
+#include "Ioss_SurfaceSplit.h"
+#include "Ioss_Utils.h"
+#include "Ioss_VariableType.h"
+#include "Ioss_use_fmt.h"
+#if defined(SEACAS_HAVE_EXODUS)
+#include "exodusII.h"
+#endif
+#include "info_interface.h"
 #if defined(SEACAS_HAVE_CGNS)
 #include <cgnslib.h>
 #endif
@@ -20,15 +65,15 @@
 namespace {
   void info_timesteps(Ioss::Region &region);
   void info_nodeblock(Ioss::Region &region, const Info::Interface &interFace);
-  void info_edgeblock(Ioss::Region &region);
-  void info_faceblock(Ioss::Region &region);
+  void info_edgeblock(Ioss::Region &region, const Info::Interface &interFace);
+  void info_faceblock(Ioss::Region &region, const Info::Interface &interFace);
   void info_elementblock(Ioss::Region &region, const Info::Interface &interFace);
   void info_structuredblock(Ioss::Region &region, const Info::Interface &interFace);
 
-  void info_nodesets(Ioss::Region &region);
-  void info_edgesets(Ioss::Region &region);
-  void info_facesets(Ioss::Region &region);
-  void info_elementsets(Ioss::Region &region);
+  void info_nodesets(Ioss::Region &region, const Info::Interface &interFace);
+  void info_edgesets(Ioss::Region &region, const Info::Interface &interFace);
+  void info_facesets(Ioss::Region &region, const Info::Interface &interFace);
+  void info_elementsets(Ioss::Region &region, const Info::Interface &interFace);
 
   void info_sidesets(Ioss::Region &region, const Info::Interface &interFace);
   void info_coordinate_frames(Ioss::Region &region);
@@ -39,8 +84,16 @@ namespace {
   void info_aliases(const Ioss::Region &region, const Ioss::GroupingEntity *ige, bool nl_pre,
                     bool nl_post);
 
+  void info_variable_types()
+  {
+    auto var_list = Ioss::VariableType::external_types(Ioss::VariableType::Type::UNKNOWN);
+    for (auto &var : var_list) {
+      var->print();
+    }
+  }
+
   void file_info(const Info::Interface &interFace);
-  void group_info(Info::Interface &interFace);
+  void change_set_info(Info::Interface &interFace);
 
   void info_df(const Ioss::GroupingEntity *ge, const std::string &prefix)
   {
@@ -110,40 +163,22 @@ namespace {
     }
   }
 
-#if defined(SEACAS_HAVE_EXODUS)
-  int print_groups(int exoid, std::string prefix)
+  void change_set_info(Info::Interface &interFace)
   {
-    int   idum;
-    float rdum;
-    char  group_name[33];
-    // Print name of this group...
-    ex_inquire(exoid, EX_INQ_GROUP_NAME, &idum, &rdum, group_name);
-    fmt::print("{}{}\n", prefix, group_name);
+    std::string           inpfile    = interFace.filename();
+    std::string           input_type = interFace.type();
+    Ioss::PropertyManager properties = set_properties(interFace);
 
-    int              num_children = ex_inquire_int(exoid, EX_INQ_NUM_CHILD_GROUPS);
-    std::vector<int> children(num_children);
-    ex_get_group_ids(exoid, nullptr, children.data());
-    prefix += '\t';
-    for (int i = 0; i < num_children; i++) {
-      print_groups(children[i], prefix);
+    auto              mode = Ioss::READ_RESTART;
+    Ioss::DatabaseIO *dbi  = Ioss::IOFactory::create(input_type, inpfile, mode,
+                                                     Ioss::ParallelUtils::comm_world(), properties);
+
+    Ioss::io_info_set_db_properties(interFace, dbi);
+    auto cs_names = dbi->internal_change_set_describe();
+    fmt::print("\t/ (root)\n");
+    for (const auto &cs_name : cs_names) {
+      fmt::print("\t\t{}\n", cs_name);
     }
-    return 0;
-  }
-#endif
-
-  void group_info(Info::Interface &interFace)
-  {
-#if defined(SEACAS_HAVE_EXODUS)
-    // Assume exodusII...
-    std::string inpfile       = interFace.filename();
-    float       vers          = 0.0;
-    int         CPU_word_size = 0;
-    int         IO_word_size  = 0;
-
-    int exoid = ex_open(inpfile.c_str(), EX_READ, &CPU_word_size, &IO_word_size, &vers);
-
-    print_groups(exoid, "");
-#endif
   }
 
   void file_info(const Info::Interface &interFace)
@@ -157,7 +192,7 @@ namespace {
     if (!custom_field.empty()) {
       auto suffices = Ioss::tokenize(custom_field, ",");
       if (suffices.size() > 1) {
-        Ioss::VariableType::create_named_suffix_field_type("UserDefined", suffices);
+        Ioss::VariableType::create_named_suffix_type("UserDefined", suffices);
       }
     }
 
@@ -177,7 +212,32 @@ namespace {
       info_timesteps(region);
     }
     else {
-      Ioss::io_info_file_info(interFace, region);
+      auto cs_list = Ioss::tokenize(interFace.change_set_name(), ",");
+      if (cs_list.empty()) {
+        cs_list.push_back("/");
+      }
+      else {
+        if (cs_list[0] == "ALL") {
+          cs_list = dbi->internal_change_set_describe();
+        }
+      }
+
+      bool first = true;
+      for (const auto &cs_name : cs_list) {
+        if (!first) {
+          fmt::print("-----------------------------------------------------------------------------"
+                     "-----------------------\n");
+        }
+        if (cs_name != "/") {
+          bool success = region.load_internal_change_set_mesh(cs_name);
+          if (!success) {
+            fmt::print("ERROR: Unable to open change set '{}' in file '{}'\n", cs_name, inpfile);
+            return;
+          }
+          first = false;
+        }
+        Ioss::io_info_file_info(interFace, region);
+      }
     }
   }
 
@@ -216,9 +276,10 @@ namespace {
     Ioss::Utils::info_fields(&nb, Ioss::Field::ATTRIBUTE,
                              prefix + "\tAttributes: ", "\n\t\t" + prefix);
     Ioss::Utils::info_fields(&nb, Ioss::Field::TRANSIENT,
-                             prefix + "\tTransient:  ", "\n\t\t" + prefix);
+                             prefix + "\tTransient:  ", "\n\t\t" + prefix,
+                             interFace.field_details());
 
-    if (interFace.compute_bbox()) {
+    if (interFace.compute_bbox() && region.mesh_type() != Ioss::MeshType::STRUCTURED) {
       print_bbox(nb);
     }
   }
@@ -250,7 +311,8 @@ namespace {
                  fmt::group_digits(num_node));
 
       info_aliases(region, sb, true, false);
-      Ioss::Utils::info_fields(sb, Ioss::Field::TRANSIENT, "\n\tTransient:  ");
+      Ioss::Utils::info_fields(sb, Ioss::Field::TRANSIENT, "\n\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(sb, Ioss::Field::REDUCTION, "\n\tTransient (Reduction):  ", "\t");
       info_nodeblock(region, sb->get_node_block(), interFace, "\t");
       fmt::print("\n");
@@ -258,7 +320,11 @@ namespace {
       if (!sb->m_zoneConnectivity.empty()) {
         fmt::print("\tConnectivity with other blocks:\n");
         for (const auto &zgc : sb->m_zoneConnectivity) {
+#if defined __NVCC__
+          std::cout << zgc << "\n";
+#else
           fmt::print("{}\n", zgc);
+#endif
         }
       }
       if (!sb->m_boundaryConditions.empty()) {
@@ -272,7 +338,11 @@ namespace {
                    });
 
         for (const auto &bc : sb_bc) {
+#if defined __NVCC__
+          std::cout << bc << "\n";
+#else
           fmt::print("{}\n", bc);
+#endif
         }
       }
       if (interFace.compute_bbox()) {
@@ -287,6 +357,7 @@ namespace {
     Ioss::Utils::info_property(&region, Ioss::Property::ATTRIBUTE,
                                "\tAttributes (Reduction): ", "\t");
     Ioss::Utils::info_fields(&region, Ioss::Field::REDUCTION, "\tTransient  (Reduction):  ", "\t");
+    info_variable_types();
   }
 
   void info_assemblies(Ioss::Region &region)
@@ -340,13 +411,14 @@ namespace {
       Ioss::Utils::info_property(eb, Ioss::Property::ATTRIBUTE, "\tAttributes (Reduction): ", "\t");
 
       if (interFace.adjacencies()) {
-        std::vector<std::string> blocks = eb->get_block_adjacencies();
+        Ioss::NameList blocks = eb->get_block_adjacencies();
         fmt::print("\n\tAdjacent to  {} element block(s):\t", blocks.size());
         for (const auto &block : blocks) {
           fmt::print("{}  ", block);
         }
       }
-      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ");
+      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(eb, Ioss::Field::REDUCTION, "\n\tTransient  (Reduction):  ");
 
       if (interFace.compute_bbox()) {
@@ -355,7 +427,7 @@ namespace {
     }
   }
 
-  void info_edgeblock(Ioss::Region &region)
+  void info_edgeblock(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::EdgeBlockContainer &ebs = region.get_edge_blocks();
     for (auto &eb : ebs) {
@@ -370,19 +442,20 @@ namespace {
       Ioss::Utils::info_fields(eb, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
 
 #if 0
-        std::vector<std::string> blocks = eb->get_block_adjacencies();
+        Ioss::NameList blocks = eb->get_block_adjacencies();
         fmt::print("\tAdjacent to  {} edge block(s):\t", blocks.size());
         for (auto &block : blocks) {
           fmt::print("{}  ", block);
         }
 #endif
-      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ");
+      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(eb, Ioss::Field::REDUCTION, "\n\tTransient (Reduction):  ");
       fmt::print("\n");
     }
   }
 
-  void info_faceblock(Ioss::Region &region)
+  void info_faceblock(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::FaceBlockContainer &ebs = region.get_face_blocks();
     for (auto &eb : ebs) {
@@ -397,13 +470,14 @@ namespace {
       Ioss::Utils::info_fields(eb, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
 
 #if 0
-        std::vector<std::string> blocks = eb->get_block_adjacencies();
+        Ioss::NameList blocks = eb->get_block_adjacencies();
         fmt::print("\tAdjacent to  {} face block(s):\t", blocks.size());
         for (auto &block : blocks) {
           fmt::print("{}  ", block);
         }
 #endif
-      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ");
+      Ioss::Utils::info_fields(eb, Ioss::Field::TRANSIENT, "\n\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(eb, Ioss::Field::REDUCTION, "\n\tTransient (Reduction):  ");
       fmt::print("\n");
     }
@@ -423,10 +497,11 @@ namespace {
 #endif
       }
       info_aliases(region, fs, true, false);
-      Ioss::Utils::info_fields(fs, Ioss::Field::TRANSIENT, "\n\tTransient: ");
+      Ioss::Utils::info_fields(fs, Ioss::Field::TRANSIENT, "\n\tTransient: ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(fs, Ioss::Field::REDUCTION, "\n\tTransient (Reduction):  ");
       if (interFace.adjacencies()) {
-        std::vector<std::string> blocks;
+        Ioss::NameList blocks;
         fs->block_membership(blocks);
         fmt::print("\n\t\tTouches {} element block(s):\t", blocks.size());
         for (const auto &block : blocks) {
@@ -442,14 +517,15 @@ namespace {
         fmt::print("\t{}, {:8} sides, {:3d} attributes, {:8} distribution factors.\n", name(fb),
                    fmt::group_digits(count), num_attrib, fmt::group_digits(num_dist));
         info_df(fb, "\t\t");
-        Ioss::Utils::info_fields(fb, Ioss::Field::TRANSIENT, "\t\tTransient: ", "\n\t\t");
+        Ioss::Utils::info_fields(fb, Ioss::Field::TRANSIENT, "\t\tTransient: ", "\n\t\t",
+                                 interFace.field_details());
         Ioss::Utils::info_fields(fb, Ioss::Field::REDUCTION,
                                  "\t\tTransient (Reduction):  ", "\n\t\t");
       }
     }
   }
 
-  void info_nodesets(Ioss::Region &region)
+  void info_nodesets(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::NodeSetContainer &nss = region.get_nodesets();
     for (auto &ns : nss) {
@@ -462,12 +538,13 @@ namespace {
       info_aliases(region, ns, false, true);
       info_df(ns, "\t");
       Ioss::Utils::info_fields(ns, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
-      Ioss::Utils::info_fields(ns, Ioss::Field::TRANSIENT, "\tTransient:  ");
+      Ioss::Utils::info_fields(ns, Ioss::Field::TRANSIENT, "\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(ns, Ioss::Field::REDUCTION, "\tTransient (Reduction):  ");
     }
   }
 
-  void info_edgesets(Ioss::Region &region)
+  void info_edgesets(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::EdgeSetContainer &nss = region.get_edgesets();
     for (auto &ns : nss) {
@@ -478,12 +555,13 @@ namespace {
       info_aliases(region, ns, false, true);
       info_df(ns, "\t");
       Ioss::Utils::info_fields(ns, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
-      Ioss::Utils::info_fields(ns, Ioss::Field::TRANSIENT, "\tTransient:  ");
+      Ioss::Utils::info_fields(ns, Ioss::Field::TRANSIENT, "\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(ns, Ioss::Field::REDUCTION, "\tTransient (Reduction):  ");
     }
   }
 
-  void info_facesets(Ioss::Region &region)
+  void info_facesets(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::FaceSetContainer &fss = region.get_facesets();
     for (auto &fs : fss) {
@@ -494,12 +572,13 @@ namespace {
       info_aliases(region, fs, false, true);
       info_df(fs, "\t");
       Ioss::Utils::info_fields(fs, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
-      Ioss::Utils::info_fields(fs, Ioss::Field::TRANSIENT, "\tTransient:  ");
+      Ioss::Utils::info_fields(fs, Ioss::Field::TRANSIENT, "\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(fs, Ioss::Field::REDUCTION, "\tTransient (Reduction):  ");
     }
   }
 
-  void info_elementsets(Ioss::Region &region)
+  void info_elementsets(Ioss::Region &region, const Info::Interface &interFace)
   {
     const Ioss::ElementSetContainer &ess = region.get_elementsets();
     for (auto &es : ess) {
@@ -508,7 +587,8 @@ namespace {
       info_aliases(region, es, false, true);
       info_df(es, "\t");
       Ioss::Utils::info_fields(es, Ioss::Field::ATTRIBUTE, "\tAttributes: ");
-      Ioss::Utils::info_fields(es, Ioss::Field::TRANSIENT, "\tTransient:  ");
+      Ioss::Utils::info_fields(es, Ioss::Field::TRANSIENT, "\tTransient:  ", "\n\t",
+                               interFace.field_details());
       Ioss::Utils::info_fields(es, Ioss::Field::REDUCTION, "\tTransient (Reduction):  ");
     }
   }
@@ -533,7 +613,7 @@ namespace {
   void info_aliases(const Ioss::Region &region, const Ioss::GroupingEntity *ige, bool nl_pre,
                     bool nl_post)
   {
-    std::vector<std::string> aliases;
+    Ioss::NameList aliases;
     if (region.get_aliases(ige->name(), ige->type(), aliases) > 0) {
       if (nl_pre) {
         fmt::print("\n");
@@ -574,12 +654,10 @@ namespace {
 
 namespace Ioss {
   void io_info_file_info(const Info::Interface &interFace) { file_info(interFace); }
-  void io_info_group_info(Info::Interface &interFace) { group_info(interFace); }
+  void io_info_change_set_info(Info::Interface &interFace) { change_set_info(interFace); }
 
   void io_info_set_db_properties(const Info::Interface &interFace, Ioss::DatabaseIO *dbi)
   {
-    std::string inpfile = interFace.filename();
-
     if (dbi == nullptr || !dbi->ok(true)) {
       std::exit(EXIT_FAILURE);
     }
@@ -595,15 +673,6 @@ namespace Ioss {
     dbi->set_field_recognition(!interFace.disable_field_recognition());
     if (interFace.ints_64_bit()) {
       dbi->set_int_byte_size_api(Ioss::USE_INT64_API);
-    }
-
-    if (!interFace.groupname().empty()) {
-      bool success = dbi->open_group(interFace.groupname());
-      if (!success) {
-        fmt::print("ERROR: Unable to open group '{}' in file '{}'\n", interFace.groupname(),
-                   inpfile);
-        return;
-      }
     }
   }
 
@@ -632,15 +701,15 @@ namespace Ioss {
           info_region(region);
           info_assemblies(region);
           info_nodeblock(region, interFace);
-          info_edgeblock(region);
-          info_faceblock(region);
+          info_edgeblock(region, interFace);
+          info_faceblock(region, interFace);
           info_elementblock(region, interFace);
           info_structuredblock(region, interFace);
 
-          info_nodesets(region);
-          info_edgesets(region);
-          info_facesets(region);
-          info_elementsets(region);
+          info_nodesets(region, interFace);
+          info_edgesets(region, interFace);
+          info_facesets(region, interFace);
+          info_elementsets(region, interFace);
 
           info_sidesets(region, interFace);
           info_blobs(region);

@@ -108,7 +108,7 @@ int ex_put_prop_names(int exoid, ex_entity_type obj_type, int num_props, char **
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -120,7 +120,7 @@ int ex_put_prop_names(int exoid, ex_entity_type obj_type, int num_props, char **
   name_length = ex_inquire_int(exoid, EX_INQ_DB_MAX_ALLOWED_NAME_LENGTH) + 1;
 
   /* inquire id of previously defined dimension (number of objects) */
-  if ((status = nc_inq_dimid(exoid, ex__dim_num_objects(obj_type), &dimid)) != NC_NOERR) {
+  if ((status = nc_inq_dimid(exoid, exi_dim_num_objects(obj_type), &dimid)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to locate number of %s in file id %d",
              ex_name_of_object(obj_type), exoid);
     ex_err_fn(exoid, __func__, errmsg, status);
@@ -130,7 +130,7 @@ int ex_put_prop_names(int exoid, ex_entity_type obj_type, int num_props, char **
   nc_set_fill(exoid, NC_FILL, &oldfill); /* fill with zeros per routine spec */
 
   /* put netcdf file into define mode  */
-  if ((status = nc_redef(exoid)) != NC_NOERR) {
+  if ((status = exi_redef(exoid, __func__)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to place file id %d into define mode", exoid);
     ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
@@ -172,7 +172,8 @@ int ex_put_prop_names(int exoid, ex_entity_type obj_type, int num_props, char **
 
     /*   create attribute to cause variable to fill with zeros per routine spec
      */
-    if ((status = nc_put_att_longlong(exoid, propid, _FillValue, int_type, 1, vals)) != NC_NOERR) {
+    if ((status = nc_put_att_longlong(exoid, propid, NC_FillValue, int_type, 1, vals)) !=
+        NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH,
                "ERROR: failed to create property name fill attribute in file id %d", exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
@@ -204,20 +205,20 @@ int ex_put_prop_names(int exoid, ex_entity_type obj_type, int num_props, char **
   }
 
   /* leave define mode  */
-  if ((status = ex__leavedef(exoid, __func__)) != NC_NOERR) {
+  if ((status = exi_leavedef(exoid, __func__)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to exit define mode");
     ex_err_fn(exoid, __func__, errmsg, status);
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
   /* Update the maximum_name_length attribute on the file. */
-  ex__update_max_name_length(exoid, max_name_len - 1);
+  exi_update_max_name_length(exoid, max_name_len - 1);
 
   nc_set_fill(exoid, oldfill, &temp); /* default: turn off fill */
   EX_FUNC_LEAVE(EX_NOERR);
 
 /* Fatal error: exit definition mode and return */
 error_ret:
-  ex__leavedef(exoid, __func__);
+  exi_leavedef(exoid, __func__);
   EX_FUNC_LEAVE(EX_FATAL);
 }

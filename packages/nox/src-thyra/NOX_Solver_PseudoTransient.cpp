@@ -1,52 +1,11 @@
-// $Id$
-// $Source$
-
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //            NOX: An Object-Oriented Nonlinear Solver Package
-//                 Copyright (2002) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Roger Pawlowski (rppawlo@sandia.gov) or
-// Eric Phipps (etphipp@sandia.gov), Sandia National Laboratories.
-// ************************************************************************
-//  CVS Information
-//  $Source$
-//  $Author$
-//  $Date$
-//  $Revision$
-// ************************************************************************
-//@HEADER
+// Copyright 2002 NTESS and the NOX contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #include "NOX_Solver_PseudoTransient.hpp"    // class definition
 #include "NOX_Abstract_Vector.H"
@@ -293,12 +252,7 @@ NOX::StatusTest::StatusType NOX::Solver::PseudoTransient::step()
       ::Thyra::V_StVpStV(x_dot.ptr(),inv_delta,*x,-inv_delta,*x_old);
     }
 
-    ::Thyra::ModelEvaluatorBase::InArgs<double>& inArgs = thyraSolnGroup->getNonconstInArgs();
-
-    inArgs.set_x_dot(x_dot);
-    inArgs.set_alpha(inv_delta);
-    inArgs.set_beta(1.0);
-    inArgs.set_t(time);
+    thyraSolnGroup->enablePseudoTransientTerms(x_dot,inv_delta,1.0,time);
   }
   else {
     delta = std::numeric_limits<double>::max();
@@ -313,8 +267,7 @@ NOX::StatusTest::StatusType NOX::Solver::PseudoTransient::step()
   bool ok = true;
   if ( use_transient_residual && (nIter < max_pseudo_transient_iterations) ) {
     thyraTransientResidualGroup->setX(solnPtr->getX());
-    ::Thyra::ModelEvaluatorBase::InArgs<double>& inArgs = thyraTransientResidualGroup->getNonconstInArgs();
-    inArgs.setArgs(thyraSolnGroup->getInArgs());
+    thyraTransientResidualGroup->enablePseudoTransientTerms(x_dot,inv_delta,1.0,time);
     ok = directionPtr->compute(*dirPtr, *thyraTransientResidualGroup, *this);
     NOX::Abstract::Group::ReturnType rtype = thyraTransientResidualGroup->computeF();
     if (rtype != NOX::Abstract::Group::Ok) {
@@ -322,6 +275,7 @@ NOX::StatusTest::StatusType NOX::Solver::PseudoTransient::step()
               << "Unable to compute F" << std::endl;
       throw std::runtime_error("NOX Error");
     }
+    thyraTransientResidualGroup->disablePseudoTransientTerms();
   }
   else {
     ok = directionPtr->compute(*dirPtr, soln, *this);
@@ -337,13 +291,7 @@ NOX::StatusTest::StatusType NOX::Solver::PseudoTransient::step()
   }
 
   // reset the inargs to the correct value for steady state residual evaluations
-  {
-    ::Thyra::ModelEvaluatorBase::InArgs<double>& inArgs = thyraSolnGroup->getNonconstInArgs();
-    inArgs.set_x_dot(Teuchos::null);
-    inArgs.set_alpha(0.0);
-    inArgs.set_beta(1.0);
-    inArgs.set_t(0.0);
-  }
+  thyraSolnGroup->disablePseudoTransientTerms();
 
   // Update iteration count.
   nIter ++;

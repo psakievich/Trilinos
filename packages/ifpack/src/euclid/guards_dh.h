@@ -43,6 +43,12 @@
 #ifndef GUARDS_DH
 #define GUARDS_DH
 
+#if defined(Ifpack_SHOW_DEPRECATED_WARNINGS)
+#ifdef __GNUC__
+#warning "The Ifpack package is deprecated"
+#endif
+#endif
+
 #include "euclid_common.h"
 
 
@@ -52,7 +58,7 @@
 
 #define  INITIALIZE_DH(argc, argv, help) \
             MPI_Init(&argc,&argv);  \
-            comm_dh = MPI_COMM_WORLD;    \
+            comm_dh = MPI_COMM_WORLD; /* CHECK: ALLOW MPI_COMM_WORLD */ \
             MPI_Errhandler_set(comm_dh, MPI_ERRORS_RETURN); \
             EuclidInitialize(argc, argv, help); \
             dh_StartFunc(__FUNC__, __FILE__, __LINE__, 1); \

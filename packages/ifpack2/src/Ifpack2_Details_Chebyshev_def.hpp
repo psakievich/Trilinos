@@ -1,45 +1,11 @@
-/*
-//@HEADER
-// ***********************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //       Ifpack2: Templated Object-Oriented Algebraic Preconditioner Package
-//                 Copyright (2009) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//@HEADER
-*/
+// Copyright 2009 NTESS and the Ifpack2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef IFPACK2_DETAILS_CHEBYSHEV_DEF_HPP
 #define IFPACK2_DETAILS_CHEBYSHEV_DEF_HPP
@@ -195,7 +161,36 @@ struct LapackHelper{
                            Teuchos::ArrayRCP<typename Teuchos::ScalarTraits<ScalarType>::magnitudeType> offdiag) {
     throw std::runtime_error("LAPACK does not support the scalar type.");
   }
+
 };
+
+template<class V>
+void
+computeInitialGuessForCG (const V& diagonal, V& x) {
+  using device_type = typename V::node_type::device_type;
+  using range_policy = Kokkos::RangePolicy<typename device_type::execution_space>;
+
+  // Initial randomization of the vector
+  x.randomize();
+
+
+  // Zero the stuff that where the diagonal is equal to one.  These are assumed to
+  // correspond to OAZ rows in the matrix.
+  size_t N = x.getLocalLength();
+  auto d_view = diagonal.template getLocalView<device_type>(Tpetra::Access::ReadOnly);
+  auto x_view = x.template getLocalView<device_type>(Tpetra::Access::ReadWrite);
+
+  auto ONE  = Teuchos::ScalarTraits<typename V::impl_scalar_type>::one();
+  auto ZERO = Teuchos::ScalarTraits<typename V::impl_scalar_type>::zero();
+
+  Kokkos::parallel_for("computeInitialGuessforCG::zero_bcs", range_policy(0,N), KOKKOS_LAMBDA(const size_t & i) {
+      if(d_view(i,0) == ONE)
+        x_view(i,0) = ZERO;       
+    });
+}
+
+
+
 
 
 template<class ScalarType>
@@ -852,7 +847,6 @@ Chebyshev<ScalarType, MV>::compute ()
   if (userInvDiag_.is_null ()) {
     Teuchos::RCP<const crs_matrix_type> A_crsMat =
       Teuchos::rcp_dynamic_cast<const crs_matrix_type> (A_);
-
     if (D_.is_null ()) { // We haven't computed D_ before
       if (! A_crsMat.is_null () && A_crsMat->isFillComplete ()) {
         // It's a CrsMatrix with a const graph; cache diagonal offsets.
@@ -932,8 +926,9 @@ Chebyshev<ScalarType, MV>::compute ()
                                                                  eigRelTolerance_, eigNormalizationFreq_, stream,
                                                                  computeSpectralRadius_);
     }
-    else
+    else {
       computedLambdaMax = cgMethod (*A_, *D_, eigMaxIters_);
+    }
     TEUCHOS_TEST_FOR_EXCEPTION(
       STS::isnaninf (computedLambdaMax),
       std::runtime_error,
@@ -1531,6 +1526,8 @@ ifpackApplyImpl (const op_type& A,
 }
 
 
+
+
 template<class ScalarType, class MV>
 typename Chebyshev<ScalarType, MV>::ST
 Chebyshev<ScalarType, MV>::
@@ -1544,6 +1541,8 @@ cgMethodWithInitGuess (const op_type& A,
   if (debug_) {
     *out_ << " cgMethodWithInitGuess:" << endl;
   }
+
+
 
   const ST one = STS::one();
   ST beta, betaOld = one, pAp, pApOld = one, alpha, rHz, rHzOld, rHzOld2 = one, lambdaMax;
@@ -1580,11 +1579,17 @@ cgMethodWithInitGuess (const op_type& A,
       if (debug_) {
         *out_ << " diag[" << iter << "]     = " << diag[iter] << endl;
         *out_ << " offdiag["<< iter-1 << "] = " << offdiag[iter-1] << endl;
-        }
+        *out_ << " rHz = "<<rHz <<endl;
+        *out_ << " alpha = "<<alpha<<endl;
+        *out_ << " beta = "<<beta<<endl;
+      }
     } else {
       diag[iter] = STS::real(pAp/rHzOld);
       if (debug_) {
         *out_ << " diag[" << iter << "]     = " << diag[iter] << endl;
+        *out_ << " rHz = "<<rHz <<endl;
+        *out_ << " alpha = "<<alpha<<endl;
+        *out_ << " beta = "<<beta<<endl;
       }
     }
     rHzOld2 = rHzOld;
@@ -1604,6 +1609,7 @@ Chebyshev<ScalarType, MV>::
 cgMethod (const op_type& A, const V& D_inv, const int numIters)
 {
   using std::endl;
+
   if (debug_) {
     *out_ << "cgMethod:" << endl;
   }
@@ -1613,10 +1619,8 @@ cgMethod (const op_type& A, const V& D_inv, const int numIters)
     r = rcp(new V(A.getDomainMap ()));
     if (eigKeepVectors_)
       eigVector_ = r;
-    // For the first pass, just let the pseudorandom number generator
-    // fill x with whatever values it wants; don't try to make its
-    // entries nonnegative.
-    PowerMethod::computeInitialGuessForPowerMethod (*r, false);
+    // For CG, we need to get the BCs right and we'll use D_inv to get that
+    Details::computeInitialGuessForCG (D_inv,*r);
   } else
     r = eigVector_;
 

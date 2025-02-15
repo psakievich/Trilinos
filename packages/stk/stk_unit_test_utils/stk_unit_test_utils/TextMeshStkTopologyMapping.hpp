@@ -45,7 +45,18 @@ struct StkTopologyMapEntry {
 
   bool operator!=(const StkTopologyMapEntry &rhs) const { return !(*this == rhs); }
 
-  int num_sides() const { return topology.num_sides(); }
+  int num_face_sides() const {
+    return 2; // FIXME: Number of stackable faces for a 3D shell is always 2 in STK
+  }
+
+  int num_sides() const {
+    if (topology.is_shell()) {
+      if (topology.dimension() == 3) {
+        return num_face_sides(); // FIXME: Number of stackable faces for a 3D shell is always 2 in STK
+      }
+    }
+    return topology.num_sides();
+  }
 
   bool valid_side(unsigned side) const
   {
@@ -136,12 +147,19 @@ class StkTopologyMapping : public text_mesh::TopologyMapping<StkTopologyMapEntry
         {"LINE_2", StkTopologyMapEntry(stk::topology::LINE_2)},
         {"LINE_3", StkTopologyMapEntry(stk::topology::LINE_3)},
         {"TRI_3", StkTopologyMapEntry(stk::topology::TRI_3)},
+        {"TRIANGLE_3", StkTopologyMapEntry(stk::topology::TRI_3)},
         {"TRI_4", StkTopologyMapEntry(stk::topology::TRI_4)},
+        {"TRIANGLE_4", StkTopologyMapEntry(stk::topology::TRI_4)},
         {"TRI_6", StkTopologyMapEntry(stk::topology::TRI_6)},
+        {"TRIANGLE_6", StkTopologyMapEntry(stk::topology::TRI_6)},
         {"QUAD_4", StkTopologyMapEntry(stk::topology::QUAD_4)},
+        {"QUADRILATERAL_4", StkTopologyMapEntry(stk::topology::QUAD_4)},
         {"QUAD_6", StkTopologyMapEntry(stk::topology::QUAD_6)},
+        {"QUADRILATERAL_6", StkTopologyMapEntry(stk::topology::QUAD_6)},
         {"QUAD_8", StkTopologyMapEntry(stk::topology::QUAD_8)},
+        {"QUADRILATERAL_8", StkTopologyMapEntry(stk::topology::QUAD_8)},
         {"QUAD_9", StkTopologyMapEntry(stk::topology::QUAD_9)},
+        {"QUADRILATERAL_9", StkTopologyMapEntry(stk::topology::QUAD_9)},
         {"PARTICLE", StkTopologyMapEntry(stk::topology::PARTICLE)},
         {"LINE_2_1D", StkTopologyMapEntry(stk::topology::LINE_2_1D)},
         {"LINE_3_1D", StkTopologyMapEntry(stk::topology::LINE_3_1D)},
@@ -152,21 +170,37 @@ class StkTopologyMapping : public text_mesh::TopologyMapping<StkTopologyMapEntry
         {"SPRING_2", StkTopologyMapEntry(stk::topology::SPRING_2)},
         {"SPRING_3", StkTopologyMapEntry(stk::topology::SPRING_3)},
         {"TRI_3_2D", StkTopologyMapEntry(stk::topology::TRI_3_2D)},
+        {"TRIANGLE_3_2D", StkTopologyMapEntry(stk::topology::TRI_3_2D)},
         {"TRI_4_2D", StkTopologyMapEntry(stk::topology::TRI_4_2D)},
+        {"TRIANGLE_4_2D", StkTopologyMapEntry(stk::topology::TRI_4_2D)},
         {"TRI_6_2D", StkTopologyMapEntry(stk::topology::TRI_6_2D)},
+        {"TRIANGLE_6_2D", StkTopologyMapEntry(stk::topology::TRI_6_2D)},
         {"QUAD_4_2D", StkTopologyMapEntry(stk::topology::QUAD_4_2D)},
+        {"QUADRILATERAL_4_2D", StkTopologyMapEntry(stk::topology::QUAD_4_2D)},
         {"QUAD_8_2D", StkTopologyMapEntry(stk::topology::QUAD_8_2D)},
+        {"QUADRILATERAL_8_2D", StkTopologyMapEntry(stk::topology::QUAD_8_2D)},
         {"QUAD_9_2D", StkTopologyMapEntry(stk::topology::QUAD_9_2D)},
+        {"QUADRILATERAL_9_2D", StkTopologyMapEntry(stk::topology::QUAD_9_2D)},
         {"SHELL_TRI_3", StkTopologyMapEntry(stk::topology::SHELL_TRI_3)},
+        {"SHELL_TRIANGLE_3", StkTopologyMapEntry(stk::topology::SHELL_TRI_3)},
         {"SHELL_TRI_4", StkTopologyMapEntry(stk::topology::SHELL_TRI_4)},
+        {"SHELL_TRIANGLE_4", StkTopologyMapEntry(stk::topology::SHELL_TRI_4)},
         {"SHELL_TRI_6", StkTopologyMapEntry(stk::topology::SHELL_TRI_6)},
+        {"SHELL_TRIANGLE_6", StkTopologyMapEntry(stk::topology::SHELL_TRI_6)},
         {"SHELL_QUAD_4", StkTopologyMapEntry(stk::topology::SHELL_QUAD_4)},
+        {"SHELL_QUADRILATERAL_4", StkTopologyMapEntry(stk::topology::SHELL_QUAD_4)},
         {"SHELL_QUAD_8", StkTopologyMapEntry(stk::topology::SHELL_QUAD_8)},
+        {"SHELL_QUADRILATERAL_8", StkTopologyMapEntry(stk::topology::SHELL_QUAD_8)},
         {"SHELL_QUAD_9", StkTopologyMapEntry(stk::topology::SHELL_QUAD_9)},
+        {"SHELL_QUADRILATERAL_9", StkTopologyMapEntry(stk::topology::SHELL_QUAD_9)},
         {"TET_4", StkTopologyMapEntry(stk::topology::TET_4)},
+        {"TETRAHEDRON_4", StkTopologyMapEntry(stk::topology::TET_4)},
         {"TET_8", StkTopologyMapEntry(stk::topology::TET_8)},
+        {"TETRAHEDRON_8", StkTopologyMapEntry(stk::topology::TET_8)},
         {"TET_10", StkTopologyMapEntry(stk::topology::TET_10)},
+        {"TETRAHEDRON_10", StkTopologyMapEntry(stk::topology::TET_10)},
         {"TET_11", StkTopologyMapEntry(stk::topology::TET_11)},
+        {"TETRAHEDRON_11", StkTopologyMapEntry(stk::topology::TET_11)},
         {"PYRAMID_5", StkTopologyMapEntry(stk::topology::PYRAMID_5)},
         {"PYRAMID_13", StkTopologyMapEntry(stk::topology::PYRAMID_13)},
         {"PYRAMID_14", StkTopologyMapEntry(stk::topology::PYRAMID_14)},
@@ -175,17 +209,22 @@ class StkTopologyMapping : public text_mesh::TopologyMapping<StkTopologyMapEntry
         {"WEDGE_15", StkTopologyMapEntry(stk::topology::WEDGE_15)},
         {"WEDGE_18", StkTopologyMapEntry(stk::topology::WEDGE_18)},
         {"HEX_8", StkTopologyMapEntry(stk::topology::HEX_8)},
+        {"HEXAHEDRON_8", StkTopologyMapEntry(stk::topology::HEX_8)},
         {"HEX_20", StkTopologyMapEntry(stk::topology::HEX_20)},
+        {"HEXAHEDRON_20", StkTopologyMapEntry(stk::topology::HEX_20)},
         {"HEX_27", StkTopologyMapEntry(stk::topology::HEX_27)},
+        {"HEXAHEDRON_27", StkTopologyMapEntry(stk::topology::HEX_27)}
     };
   }
 };
 
 namespace simple_fields {
 
-struct StkTopologyMapEntry : public stk::unit_test_util::StkTopologyMapEntry {};
+struct STK_DEPRECATED_MSG("Please use the non-simple_fields-namespaced version of this class instead")
+StkTopologyMapEntry : public stk::unit_test_util::StkTopologyMapEntry {};
 
-class StkTopologyMapping : public stk::unit_test_util::StkTopologyMapping {};
+class STK_DEPRECATED_MSG("Please use the non-simple_fields-namespaced version of this class instead")
+StkTopologyMapping : public stk::unit_test_util::StkTopologyMapping {};
 
 } // namespace simple_fields
 

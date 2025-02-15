@@ -1,49 +1,11 @@
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //            NOX: An Object-Oriented Nonlinear Solver Package
-//                 Copyright (2002) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Roger Pawlowski (rppawlo@sandia.gov) or
-// Eric Phipps (etphipp@sandia.gov), Sandia National Laboratories.
-// ************************************************************************
-//  CVS Information
-//  $Source$
-//  $Author$
-//  $Date$
-//  $Revision$
-// ************************************************************************
-//@HEADER
+// Copyright 2002 NTESS and the NOX contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #include "Thyra_NonlinearSolver_NOX.hpp"
 #include "Thyra_VectorStdOps.hpp"
@@ -54,6 +16,7 @@
 #include "NOX_PrePostOperator_RowSumScaling.H"
 #include "NOX_MeritFunction_Weighted.hpp"
 #include "Teuchos_StandardParameterEntryValidators.hpp"
+#include <typeinfo>
 
 // ****************************************************************
 // ****************************************************************
@@ -61,7 +24,8 @@ Thyra::NOXNonlinearSolver::NOXNonlinearSolver():
   do_row_sum_scaling_(false),
   when_to_update_(NOX::RowSumScaling::UpdateInvRowSumVectorAtBeginningOfSolve),
   rebuild_solver_(true),
-  updatePreconditioner_(true)
+  updatePreconditioner_(true),
+  use_base_point_(false)
 {
   param_list_ = Teuchos::rcp(new Teuchos::ParameterList);
   valid_param_list_ = Teuchos::rcp(new Teuchos::ParameterList);
@@ -142,6 +106,7 @@ void
 Thyra::NOXNonlinearSolver::setBasePoint(
     const Thyra::ModelEvaluatorBase::InArgs<double> &modelInArgs)
 {
+  use_base_point_ = true;
   basePoint_ = modelInArgs;
 }
 
@@ -164,7 +129,7 @@ setPrecOp(const Teuchos::RCP< ::Thyra::PreconditionerBase<double>>& precOp,
 // ****************************************************************
 void 
 Thyra::NOXNonlinearSolver::
-setGroup(const Teuchos::RCP<NOX::Thyra::Group>& group)
+setGroup(const Teuchos::RCP<NOX::Abstract::Group>& group)
 {
   user_defined_nox_group_ = group;
 }
@@ -227,15 +192,21 @@ solve(VectorBase<double> *x,
     else
       nox_group_ = user_defined_nox_group_;
 
-    nox_group_->getNonconstInArgs() = this->basePoint_;
+    if (use_base_point_)
+      this->getThyraGroupNonConst(nox_group_)->setBasePoint(this->basePoint_);
 
     status_test_ = this->buildStatusTests(*param_list_);
     solver_ = NOX::Solver::buildSolver(nox_group_, status_test_, param_list_);
   }
   else {
-    nox_group_->getNonconstInArgs() = this->basePoint_;
+    if (use_base_point_)
+      this->getThyraGroupNonConst(nox_group_)->setBasePoint(this->basePoint_);
 
-    solver_->reset(initial_guess);
+    const auto thyra_group = this->getThyraGroupConst(solver_->getSolutionGroupPtr());
+    auto nonconst_thyra_group = Teuchos::rcp_const_cast<NOX::Thyra::Group>(thyra_group);
+    nonconst_thyra_group->setX(initial_guess);
+
+    solver_->reset();
   }
 
   NOX::StatusTest::StatusType solvStatus = solver_->solve();
@@ -258,19 +229,13 @@ solve(VectorBase<double> *x,
                 solver_->getNumIterations());
 
   // Get the solution and update
-  const NOX::Abstract::Group& final_group = solver_->getSolutionGroup();
-  const NOX::Abstract::Vector& final_solution = final_group.getX();
-
-  const NOX::Thyra::Vector& vec =
-    dynamic_cast<const NOX::Thyra::Vector&>(final_solution);
-
-  const ::Thyra::VectorBase<double>& new_x =
-    vec.getThyraVector();
+  const Teuchos::RCP<const NOX::Abstract::Group> final_group = solver_->getSolutionGroupPtr();
+  const Teuchos::RCP<const NOX::Thyra::Group> final_thyra_group = this->getThyraGroupConst(final_group);
+  const ::Thyra::VectorBase<double>& new_x = *(final_thyra_group->get_current_x());
 
   if (delta)
     ::Thyra::V_StVpStV<double>(Teuchos::ptr(delta),1.0,new_x,-1.0,*x);
 
-  //*x = new_x;
   ::Thyra::assign(Teuchos::ptr(x), new_x);
 
   return t_status;
@@ -282,7 +247,7 @@ solve(VectorBase<double> *x,
 Teuchos::RCP<const Thyra::VectorBase<double> >
 Thyra::NOXNonlinearSolver::get_current_x() const
 {
-  return nox_group_->get_current_x();
+  return this->getThyraGroupConst(nox_group_)->get_current_x();
 }
 
 // ****************************************************************
@@ -299,7 +264,7 @@ Thyra::NOXNonlinearSolver::get_nonconst_W(const bool forceUpToDate)
 {
   if (forceUpToDate && !nox_group_->isJacobian())
     nox_group_->computeJacobian();
-  return nox_group_->getNonconstJacobian();
+  return this->getThyraGroupNonConst(nox_group_)->getNonconstJacobian();
 }
 
 // ****************************************************************
@@ -307,7 +272,7 @@ Thyra::NOXNonlinearSolver::get_nonconst_W(const bool forceUpToDate)
 Teuchos::RCP<const Thyra::LinearOpWithSolveBase<double> >
 Thyra::NOXNonlinearSolver::get_W() const
 {
-  return nox_group_->getJacobian();
+  return this->getThyraGroupConst(nox_group_)->getJacobian();
 }
 
 // ****************************************************************
@@ -317,7 +282,7 @@ Thyra::NOXNonlinearSolver::get_nonconst_W_op(const bool forceUpToDate)
 {
   if (forceUpToDate && !nox_group_->isJacobian())
     nox_group_->computeJacobian();
-  return nox_group_->getNonconstJacobianOperator();
+  return this->getThyraGroupNonConst(nox_group_)->getNonconstJacobianOperator();
 }
 
 // ****************************************************************
@@ -325,7 +290,7 @@ Thyra::NOXNonlinearSolver::get_nonconst_W_op(const bool forceUpToDate)
 Teuchos::RCP< const Thyra::LinearOpBase<double> >
 Thyra::NOXNonlinearSolver::get_W_op() const
 {
-  return nox_group_->getJacobianOperator();
+  return this->getThyraGroupConst(nox_group_)->getJacobianOperator();
 }
 
 // ****************************************************************
@@ -333,7 +298,7 @@ Thyra::NOXNonlinearSolver::get_W_op() const
 Teuchos::RCP<const Thyra::PreconditionerBase<double> >
 Thyra::NOXNonlinearSolver::get_prec_op() const
 {
-  return nox_group_->getPreconditioner();
+  return this->getThyraGroupConst(nox_group_)->getPreconditioner();
 }
 
 // ****************************************************************
@@ -341,7 +306,7 @@ Thyra::NOXNonlinearSolver::get_prec_op() const
 Teuchos::RCP< Thyra::PreconditionerBase<double> >
 Thyra::NOXNonlinearSolver::get_nonconst_prec_op()
 {
-  return nox_group_->getNonconstPreconditioner();
+  return this->getThyraGroupNonConst(nox_group_)->getNonconstPreconditioner();
 }
 
 // ****************************************************************
@@ -408,21 +373,17 @@ validateAndParseThyraGroupOptions(Teuchos::ParameterList& thyra_group_options_su
 
   ParameterList validParams;
   {
-    Teuchos::setStringToIntegralParameter<int>(
-      "Function Scaling",
-      "None",
+    validParams.set(
+      "Function Scaling", "None",
       "Determines if function scaling of residual, Jacobian, etc. should be used.",
-      Teuchos::tuple<std::string>("None","Row Sum", "User Defined"),
-      &validParams
-      );
+      rcp(new Teuchos::StringValidator(
+          Teuchos::tuple<std::string>("None", "Row Sum", "User Defined"))));
 
-    Teuchos::setStringToIntegralParameter<int>(
-      "Update Row Sum Scaling",
-      "Before Each Nonlinear Solve",
+    validParams.set(
+      "Update Row Sum Scaling", "Before Each Nonlinear Solve",
       "Determines if function scaling of residual, Jacobian, etc. should be used.",
-      Teuchos::tuple<std::string>("Before Each Nonlinear Solve","Before Each Nonlinear Iteration"),
-      &validParams
-      );
+      rcp(new Teuchos::StringValidator(
+          Teuchos::tuple<std::string>("Before Each Nonlinear Solve","Before Each Nonlinear Iteration"))));
 
     validParams.set<Teuchos::RCP< ::Thyra::VectorBase<double> > >("User Defined Scaling", Teuchos::null);
     validParams.set<bool >("Do Right Scaling First", false);
@@ -501,6 +462,47 @@ void Thyra::NOXNonlinearSolver::setupRowSumScalingObjects()
 
   nox_parameters.sublist("Solver Options").set<RCP<NOX::MeritFunction::Generic> >("User Defined Merit Function",mf);
 
+}
+
+// ****************************************************************
+// ****************************************************************
+Teuchos::RCP<NOX::Thyra::Group>
+Thyra::NOXNonlinearSolver::
+getThyraGroupNonConst(const Teuchos::RCP<NOX::Abstract::Group>& nox_group)
+{
+  Teuchos::RCP<NOX::Thyra::Group> ntg = Teuchos::rcp_dynamic_cast<NOX::Thyra::Group>(nox_group,false);
+  if (nonnull(ntg))
+    return ntg;
+
+  auto nested_group  = nox_group->getNestedGroup();
+  if (nonnull(nested_group))
+    ntg = this->getThyraGroupNonConst(nested_group); // for recursively nested groups
+
+  TEUCHOS_TEST_FOR_EXCEPTION(ntg.is_null(),std::runtime_error,
+                             "ERROR: Thyra::NOXNonlinearSolver::getThyraGroupNonConst() failed to cast to a NOX::Thyra::Group. The object is of type \""
+                             << Teuchos::demangleName(typeid(*nox_group).name()) << "\".\n");
+
+  return ntg;
+}
+
+// ****************************************************************
+// ****************************************************************
+Teuchos::RCP<const NOX::Thyra::Group>
+Thyra::NOXNonlinearSolver::
+getThyraGroupConst(const Teuchos::RCP<const NOX::Abstract::Group>& nox_group) const
+{
+  Teuchos::RCP<const NOX::Thyra::Group> ntg = Teuchos::rcp_dynamic_cast<const NOX::Thyra::Group>(nox_group,false);
+  if (nonnull(ntg))
+    return ntg;
+
+  const auto nested_group  = nox_group->getNestedGroup();
+  if (nonnull(nested_group))
+    ntg = this->getThyraGroupConst(nested_group); // for recursively nested groups
+
+  TEUCHOS_TEST_FOR_EXCEPTION(ntg.is_null(),std::runtime_error,
+                             "ERROR: Thyra::NOXNonlinearSolver::getThyraGroupConst() failed to cast to a NOX::Thyra::Group. The object is of type \"" << Teuchos::demangleName(typeid(*nox_group).name()) << "\".\n");
+
+  return ntg;
 }
 
 // ****************************************************************

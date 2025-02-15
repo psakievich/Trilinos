@@ -2,36 +2,12 @@
 /* === klu ================================================================== */
 /* ========================================================================== */
 // @HEADER
-// ***********************************************************************
-//
+// *****************************************************************************
 //                   KLU2: A Direct Linear Solver package
-//                    Copyright 2011 Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, with Sandia Corporation, the 
-// U.S. Government retains certain rights in this software.
-//
-// This library is free software; you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as
-// published by the Free Software Foundation; either version 2.1 of the
-// License, or (at your option) any later version.
-//
-// This library is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-// 
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-// USA
-// Questions? Contact Mike A. Heroux (maherou@sandia.gov)
-//
-// KLU2 is derived work from KLU, licensed under LGPL, and copyrighted by
-// University of Florida. The Authors of KLU are Timothy A. Davis and
-// Eka Palamadai. See Doc/KLU_README.txt for the licensing and copyright
-// information for KLU.
-//
-// ***********************************************************************
+// Copyright 2011 NTESS and the KLU2 contributors.
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// *****************************************************************************
 // @HEADER
 
 /* KLU: factorizes P*A into L*U, using the Gilbert-Peierls algorithm [1], with
@@ -239,13 +215,13 @@ template <typename Entry, typename Int>
 void KLU_lsolve
 (
     /* inputs, not modified: */
-    Int n,
-    Int Lip [ ],
-    Int Llen [ ],
-    Unit LU [ ],
-    Int nrhs,
+    const Int n,
+    const Int *Lip,
+    const Int *Llen,
+    Unit *LU,
+    const Int nrhs,
     /* right-hand-side on input, solution to Lx=b on output */
-    Entry X [ ]
+    Entry *X
 )
 {
     Entry x [4], lik ;
@@ -327,6 +303,9 @@ void KLU_lsolve
             }
             break ;
 
+        default:
+            throw std::domain_error("More than 4 right-hand sides is not supported.");
+
     }
 }
 
@@ -344,8 +323,8 @@ void KLU_usolve
 (
     /* inputs, not modified: */
     Int n,
-    Int Uip [ ],
-    Int Ulen [ ],
+    const Int Uip [ ],
+    const Int Ulen [ ],
     Unit LU [ ],
     Entry Udiag [ ],
     Int nrhs,
@@ -478,8 +457,8 @@ void KLU_ltsolve
 (
     /* inputs, not modified: */
     Int n,
-    Int Lip [ ],
-    Int Llen [ ],
+    const Int Lip [ ],
+    const Int Llen [ ],
     Unit LU [ ],
     Int nrhs,
 #ifdef COMPLEX
@@ -631,11 +610,11 @@ template <typename Entry, typename Int>
 void KLU_utsolve
 (
     /* inputs, not modified: */
-    Int n,
-    Int Uip [ ],
-    Int Ulen [ ],
+    const Int n,
+    const Int Uip [ ],
+    const Int Ulen [ ],
     Unit LU [ ],
-    Entry Udiag [ ],
+    const Entry Udiag [ ],
     Int nrhs,
 #ifdef COMPLEX
     Int conj_solve,

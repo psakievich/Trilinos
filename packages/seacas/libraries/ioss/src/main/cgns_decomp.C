@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -7,43 +7,36 @@
 // Make asserts active even in non-debug build
 #undef NDEBUG
 
-#include <Ionit_Initializer.h>
-
-#include <Ioss_CodeTypes.h>
-#include <Ioss_DatabaseIO.h>
-#include <Ioss_GetLongOpt.h>
-#include <Ioss_IOFactory.h>
-#include <Ioss_Property.h>
-#include <Ioss_Region.h>
-#include <Ioss_ScopeGuard.h>
-#include <Ioss_SmartAssert.h>
-#include <Ioss_Utils.h>
-#include <Ioss_ZoneConnectivity.h>
-
-#include <cgns/Iocgns_StructuredZoneData.h>
-#include <cgns/Iocgns_Utils.h>
-
-#include <algorithm>
+#include "Ionit_Initializer.h"
+#include "Ioss_DatabaseIO.h"
+#include "Ioss_DecompositionUtils.h"
+#include "Ioss_GetLongOpt.h"
+#include "Ioss_IOFactory.h"
+#include "Ioss_Property.h"
+#include "Ioss_Region.h"
+#include "Ioss_SmartAssert.h"
+#include "Ioss_Utils.h"
+#include "Ioss_ZoneConnectivity.h"
+#include "cgns/Iocgns_StructuredZoneData.h"
+#include "cgns/Iocgns_Utils.h"
 #include <array>
 #include <cmath>
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <iomanip>
+#include <fmt/core.h>
 #include <iostream>
 #include <map>
 #include <numeric>
 #include <set>
-#include <stdexcept>
+#include <stdint.h>
 #include <string>
-#if !defined(__IOSS_WINDOWS__)
-#include <sys/ioctl.h>
-#endif
-#include <unistd.h>
-#include <utility>
 #include <vector>
+
+#include "Ioss_DBUsage.h"
+#include "Ioss_ParallelUtils.h"
+#include "Ioss_PropertyManager.h"
+#include "Ioss_ScopeGuard.h"
+#include "Ioss_StructuredBlock.h"
 
 #include <fmt/color.h>
 #include <fmt/format.h>
@@ -68,11 +61,11 @@ namespace {
 
       if (options_.retrieve("output") != nullptr) {
         const std::string temp = options_.retrieve("output");
-        histogram              = temp.find("h") != std::string::npos;
-        work_per_processor     = temp.find("w") != std::string::npos;
-        zone_proc_assignment   = temp.find("z") != std::string::npos;
-        verbose                = temp.find("v") != std::string::npos || verbose;
-        communication_map      = temp.find("c") != std::string::npos;
+        histogram              = temp.find('h') != std::string::npos;
+        work_per_processor     = temp.find('w') != std::string::npos;
+        zone_proc_assignment   = temp.find('z') != std::string::npos;
+        verbose                = temp.find('v') != std::string::npos || verbose;
+        communication_map      = temp.find('c') != std::string::npos;
       }
 
       if (options_.retrieve("version") != nullptr) {
@@ -185,7 +178,7 @@ namespace {
       return true;
     }
 
-    explicit Interface(const std::string &app_version) : version(app_version)
+    explicit Interface(std::string app_version) : version(std::move(app_version))
     {
       options_.usage("[options] input_file");
       options_.enroll("help", Ioss::GetLongOption::NoValue, "Print this summary and exit", nullptr);
@@ -242,8 +235,9 @@ namespace {
   double surface_ratio(const Iocgns::StructuredZoneData *zone)
   {
     size_t surf =
-        2 * (zone->m_ordinal[0] * zone->m_ordinal[1] + zone->m_ordinal[0] * zone->m_ordinal[2] +
-             zone->m_ordinal[1] * zone->m_ordinal[2]);
+        (zone->m_ordinal[0] * zone->m_ordinal[1] + zone->m_ordinal[0] * zone->m_ordinal[2] +
+         zone->m_ordinal[1] * zone->m_ordinal[2]) *
+        static_cast<size_t>(2);
     size_t vol = zone->cell_count();
 
     // If a 'perfect' cube, then would be pl=cbrt(vol) on a side and surf would be 6*pl*pl
@@ -321,7 +315,7 @@ namespace {
       }
     }
 
-    // In Iocgns::Utils::common_write_meta_data, there is code to make
+    // In Iocgns::Utils::common_write_metadata, there is code to make
     // sure that the zgc.m_connectionName  is unique for all zgc instances on
     // a zone / processor pair (if !parallel_io which is file-per-processor)
     // The uniquification appends a letter from 'A' to 'Z' to the name
@@ -461,63 +455,6 @@ namespace {
     }
   }
 
-  void output_histogram(const std::vector<size_t> &proc_work, size_t avg_work, size_t median)
-  {
-    fmt::print("Work-per-processor Histogram\n");
-    std::array<size_t, 16> histogram{};
-
-    auto wmin = *std::min_element(proc_work.begin(), proc_work.end());
-    auto wmax = *std::max_element(proc_work.begin(), proc_work.end());
-
-    size_t hist_size = std::min(size_t(16), (wmax - wmin));
-    hist_size        = std::min(hist_size, proc_work.size());
-
-    if (hist_size <= 1) {
-      fmt::print("\tWork is the same on all processors; no histogram needed.\n\n");
-      return;
-    }
-
-    auto delta = double(wmax + 1 - wmin) / hist_size;
-    for (const auto &pw : proc_work) {
-      auto bin = size_t(double(pw - wmin) / delta);
-      SMART_ASSERT(bin < hist_size)(bin)(hist_size);
-      histogram[bin]++;
-    }
-
-    size_t proc_width = Ioss::Utils::number_width(proc_work.size(), true);
-    size_t work_width = Ioss::Utils::number_width(wmax, true);
-
-    fmt::print("\n\t{:^{}} {:^{}}\n", "Work Range", 2 * work_width + 2, "#", proc_width);
-    auto hist_max = *std::max_element(histogram.begin(), histogram.end());
-    for (size_t i = 0; i < hist_size; i++) {
-      int         max_star = 50;
-      int         star_cnt = ((double)histogram[i] / hist_max * max_star);
-      std::string stars(star_cnt, '*');
-      for (int j = 9; j < star_cnt;) {
-        stars[j] = '|';
-        j += 10;
-      }
-      if (histogram[i] > 0 && star_cnt == 0) {
-        stars = '.';
-      }
-      size_t      w1 = wmin + size_t(i * delta);
-      size_t      w2 = wmin + size_t((i + 1) * delta);
-      std::string postfix;
-      if (w1 <= avg_work && avg_work < w2) {
-        postfix += "average";
-      }
-      if (w1 <= median && median < w2) {
-        if (!postfix.empty()) {
-          postfix += ", ";
-        }
-        postfix += "median";
-      }
-      fmt::print("\t{:{}}..{:{}} ({:{}}):\t{:{}}  {}\n", fmt::group_digits(w1), work_width,
-                 fmt::group_digits(w2), work_width, fmt::group_digits(histogram[i]), proc_width,
-                 stars, max_star, postfix);
-    }
-    fmt::print("\n");
-  }
   void describe_decomposition(std::vector<Iocgns::StructuredZoneData *> &zones,
                               size_t orig_zone_count, const Interface &interFace)
   {
@@ -557,9 +494,7 @@ namespace {
     for (const auto &zone : zones) {
       if (zone->is_active()) {
         auto len = zone->m_name.length();
-        if (len > name_len) {
-          name_len = len;
-        }
+        name_len = std::max(name_len, len);
       }
     }
 
@@ -607,63 +542,27 @@ namespace {
       }
     }
 
-    auto   min_work = *std::min_element(proc_work.begin(), proc_work.end());
-    auto   max_work = *std::max_element(proc_work.begin(), proc_work.end());
-    size_t median   = 0;
-    {
-      auto pw_copy(proc_work);
-      std::nth_element(pw_copy.begin(), pw_copy.begin() + pw_copy.size() / 2, pw_copy.end());
-      median = pw_copy[pw_copy.size() / 2];
-      fmt::print("\nWork per processor:\n\tMinimum = {}, Maximum = {}, Median = {}, Ratio = "
-                 "{:.3}\n\n",
-                 fmt::group_digits(min_work), fmt::group_digits(max_work),
-                 fmt::group_digits(median), (double)(max_work) / min_work);
-    }
-    if (interFace.work_per_processor) {
-      if (min_work == max_work) {
-        fmt::print("\nWork on all processors is {}\n\n", fmt::group_digits(min_work));
-      }
-      else {
-        int max_star = 40;
-        int min_star = max_star * ((double)min_work / (double)(max_work));
-        int delta    = max_star - min_star;
+    auto avg_median = Ioss::DecompUtils::output_decomposition_statistics(proc_work);
 
-        for (size_t i = 0; i < proc_work.size(); i++) {
-          int star_cnt =
-              (double)(proc_work[i] - min_work) / (max_work - min_work) * delta + min_star;
-          std::string stars(star_cnt, '*');
-          std::string format = "\tProcessor {:{}}, work = {:{}}  ({:.2f})\t{}\n";
-          if (proc_work[i] == max_work) {
-            fmt::print(fg(fmt::color::red), format, i, proc_width, fmt::group_digits(proc_work[i]),
-                       work_width, proc_work[i] / avg_work, stars);
-          }
-          else if (proc_work[i] == min_work) {
-            fmt::print(fg(fmt::color::green), format, i, proc_width,
-                       fmt::group_digits(proc_work[i]), work_width, proc_work[i] / avg_work, stars);
-          }
-          else {
-            fmt::print(format, i, proc_width, fmt::group_digits(proc_work[i]), work_width,
-                       proc_work[i] / avg_work, stars);
-          }
-          if (verbose) {
-            for (const auto &zone : zones) {
-              if ((size_t)zone->m_proc == i) {
-                auto pct = int(100.0 * (double)zone->work() / proc_work[i] + 0.5);
-                fmt::print("\t      {:{}} {:{}}\t{:3}%\t{:^12}\n", zone->m_name, name_len,
-                           fmt::group_digits(zone->work()), work_width, pct,
-                           fmt::format("{1:{0}} x {2:{0}} x {3:{0}}", ord_width, zone->m_ordinal[0],
-                                       zone->m_ordinal[1], zone->m_ordinal[2]));
-              }
-            }
-            fmt::print("\n");
+    if (verbose) {
+      for (size_t i = 0; i < proc_work.size(); i++) {
+        for (const auto &zone : zones) {
+          if ((size_t)zone->m_proc == i) {
+            auto pct = int(100.0 * (double)zone->work() / proc_work[i] + 0.5);
+            fmt::print("\t      {:{}} {:{}}\t{:3}%\t{:^12}\n", zone->m_name, name_len,
+                       fmt::group_digits(zone->work()), work_width, pct,
+                       fmt::format("{1:{0}} x {2:{0}} x {3:{0}}", ord_width, zone->m_ordinal[0],
+                                   zone->m_ordinal[1], zone->m_ordinal[2]));
           }
         }
+        fmt::print("\n");
       }
     }
+    fmt::print("\n");
 
     // Output Histogram...
     if (interFace.histogram) {
-      output_histogram(proc_work, (size_t)avg_work, median);
+      Ioss::DecompUtils::output_histogram(proc_work, avg_median.first, avg_median.second);
     }
 
     // Communication Information (proc X communicates with proc Z)
@@ -689,14 +588,6 @@ namespace {
                  fmt::group_digits(nodal_work), fmt::group_digits(new_nodal_work),
                  fmt::group_digits(delta), (double)new_nodal_work / nodal_work);
     }
-
-    // Imbalance penalty -- max work / avg work.  If perfect balance, then all processors would have
-    // "avg_work" work to do. With current decomposition, every processor has to wait until
-    // "max_work" is done.  Penalty = max_work / avg_work.
-    fmt::print("Imbalance Penalty:\n\tMaximum Work = {}, Average Work = {}, Penalty (max/avg) "
-               "= {:.2f}\n\n",
-               fmt::group_digits(max_work), fmt::group_digits((size_t)avg_work),
-               (double)max_work / avg_work);
   }
 } // namespace
 

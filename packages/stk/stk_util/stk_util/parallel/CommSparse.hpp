@@ -211,9 +211,28 @@ public:
   /** Communicate send buffers to receive buffers, interleave unpacking with
    *    caller-provided functor.  */
   template<typename UNPACK_ALGORITHM>
-  void communicate_with_unpack(const UNPACK_ALGORITHM & alg)
+  void communicate_with_unpack(const UNPACK_ALGORITHM & unpacker)
   {
-    communicate_with_unpacker(alg);
+    auto noExtraWork = [](){};
+    communicate_with_extra_work_and_unpacker(noExtraWork, unpacker, true);
+  }
+
+  /** Communicate send buffers to receive buffers, interleave extra work.
+   */
+  template<typename EXTRA_WORK>
+  void communicate_with_extra_work(const EXTRA_WORK & extraWork)
+  {
+    auto noUnpacker = [](int, CommBuffer&){};
+    communicate_with_extra_work_and_unpacker(extraWork, noUnpacker, true);
+  }
+
+  /** Communicate send buffers to receive buffers, interleave extra work and
+   *  also unpacking with caller-provided functor.
+   */
+  template<typename EXTRA_WORK, typename UNPACK_ALGORITHM>
+  void communicate_with_extra_work_and_unpack(const EXTRA_WORK & extraWork, const UNPACK_ALGORITHM & unpacker)
+  {
+    communicate_with_extra_work_and_unpacker(extraWork, unpacker, true);
   }
 
   /** Reset, but do not reallocate, message buffers for reprocessing.
@@ -227,7 +246,9 @@ private:
   void allocate_data(std::vector<CommBuffer>& bufs, std::vector<unsigned char>& data);
 #endif
   void verify_send_buffers_filled();
-  void communicate_with_unpacker(const std::function<void(int fromProc, CommBuffer& buf)>& functor);
+  void communicate_with_extra_work_and_unpacker(const std::function<void()>& workFunctor,
+                                                const std::function<void(int fromProc, CommBuffer& buf)>& unpackFunctor,
+                                                bool deallocateSendBuffers = false);
 
   ParallelMachine m_comm ;
   int             m_size ;
@@ -250,7 +271,7 @@ private:
 };
 
 template<typename PACK_ALGORITHM>
-bool pack_and_communicate(stk::CommSparse & comm, const PACK_ALGORITHM & algorithm)
+bool pack_and_communicate(stk::CommSparse & comm, const PACK_ALGORITHM & algorithm, bool deallocateSendBuffers = true)
 {
   stk::util::print_unsupported_version_warning(5, __LINE__, __FILE__);
 
@@ -258,13 +279,13 @@ bool pack_and_communicate(stk::CommSparse & comm, const PACK_ALGORITHM & algorit
     algorithm();
     comm.allocate_buffers();
     algorithm();
-    return comm.communicate();
+    return comm.communicate(deallocateSendBuffers);
   } else {
     algorithm();
     const bool actuallySendingOrReceiving = comm.allocate_buffers();
     if (actuallySendingOrReceiving) {
         algorithm();
-        comm.communicate();
+        comm.communicate(deallocateSendBuffers);
     }
     return actuallySendingOrReceiving; 
   }

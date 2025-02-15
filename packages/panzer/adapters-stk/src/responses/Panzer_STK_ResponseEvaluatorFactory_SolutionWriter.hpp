@@ -1,3 +1,13 @@
+// @HEADER
+// *****************************************************************************
+//           Panzer: A partial differential equation assembly
+//       engine for strongly coupled complex multiphysics systems
+//
+// Copyright 2011 NTESS and the Panzer contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
+
 #ifndef __Panzer_STK_ResponseEvaluatorFactory_SolutionWriter_hpp__
 #define __Panzer_STK_ResponseEvaluatorFactory_SolutionWriter_hpp__
 
@@ -118,7 +128,7 @@ private:
    void deleteRemovedFields(const std::vector<std::string> & removedFields,
                             std::vector<std::pair<std::string,Teuchos::RCP<const panzer::PureBasis> > > & fields) const;
 
-   struct RemovedFieldsSearchUnaryFunctor : public std::unary_function<std::pair<std::string,const panzer::PureBasis>,bool> {
+   struct RemovedFieldsSearchUnaryFunctor {
      std::vector<std::string> removedFields_;
      bool operator() (const std::pair<std::string,Teuchos::RCP<const panzer::PureBasis> > & field) 
      { return std::find(removedFields_.begin(),removedFields_.end(),field.first)!=removedFields_.end(); }

@@ -1,3 +1,12 @@
+// @HEADER
+// *****************************************************************************
+//          Tpetra: Templated Linear Algebra Services Package
+//
+// Copyright 2008 NTESS and the Tpetra contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
+
 #include <Tpetra_Core.hpp>
 // This is the only header file you need to include for the "core"
 // part of Kokkos.  That includes Kokkos::View, Kokkos::parallel_*,
@@ -240,12 +249,12 @@ int main (int argc, char* argv[]) {
     // DualView<double**> for now, rather than a View<double*>.
     Kokkos::DualView<double**, Kokkos::LayoutLeft> b_lcl ("b", numLclRows, 1);
     b_lcl.modify<Kokkos::DualView<double**, Kokkos::LayoutLeft>::t_dev::execution_space> ();
-    Kokkos::deep_copy (Kokkos::subview (b_lcl.d_view, Kokkos::ALL (), 0), forcingTerm);
+    Kokkos::deep_copy (Kokkos::subview (b_lcl.view_device(), Kokkos::ALL (), 0), forcingTerm);
     Tpetra::Vector<> b (A.getRangeMap (), b_lcl);
 
     Kokkos::DualView<double**, Kokkos::LayoutLeft> x_lcl ("b", numLclRows, 1);
     x_lcl.modify<Kokkos::DualView<double**, Kokkos::LayoutLeft>::t_dev::execution_space> ();
-    Kokkos::deep_copy (Kokkos::subview (x_lcl.d_view, Kokkos::ALL (), 0), temperature);
+    Kokkos::deep_copy (Kokkos::subview (x_lcl.view_device(), Kokkos::ALL (), 0), temperature);
     Tpetra::Vector<> x (A.getDomainMap (), x_lcl);
 
     //

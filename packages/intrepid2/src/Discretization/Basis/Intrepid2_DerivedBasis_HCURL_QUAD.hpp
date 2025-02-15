@@ -1,50 +1,16 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //                           Intrepid2 Package
-//                 Copyright (2007) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Kyungjoo Kim  (kyukim@sandia.gov),
-//                    Mauro Perego  (mperego@sandia.gov), or
-//                    Nate Roberts  (nvrober@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2007 NTESS and the Intrepid2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /** \file   Intrepid2_DerivedBasis_HCURL_QUAD.hpp
     \brief  Implementation of H(curl) basis on the quadrilateral that is templated on H(vol) and H(grad) on the line.
     \author Created by N.V. Roberts.
- 
+
  This class constructs the H(curl) space as the direct sum of two families of tensor-product bases on the quad:
  - family 1: H(vol)  x  H(grad), placed in the x component of vector output
  - family 2: H(grad) x  H(vol),  placed in the y component of vector output
@@ -71,16 +37,16 @@ namespace Intrepid2
     using ExecutionSpace  = typename HGRAD_LINE::ExecutionSpace;
     using OutputValueType = typename HGRAD_LINE::OutputValueType;
     using PointValueType  = typename HGRAD_LINE::PointValueType;
-    
+
     using OutputViewType = typename HGRAD_LINE::OutputViewType;
     using PointViewType  = typename HGRAD_LINE::PointViewType ;
     using ScalarViewType = typename HGRAD_LINE::ScalarViewType;
-    
+
     using BasisBase = typename HGRAD_LINE::BasisBase;
-    
+
     using LineGradBasis = HGRAD_LINE;
     using LineHVolBasis = HVOL_LINE;
-    
+
     using TensorBasis = Basis_TensorBasis<BasisBase>;
   public:
     /** \brief  Constructor.
@@ -96,7 +62,7 @@ namespace Intrepid2
       this->functionSpace_ = FUNCTION_SPACE_HCURL;
       this->setShardsTopologyAndTags();
     }
-    
+
     /** \brief Returns a simple decomposition of the specified operator: what operator(s) should be applied to basis1, and what operator(s) to basis2.  A one-element vector corresponds to a single TensorData entry; a multiple-element vector corresponds to a VectorData object with axialComponents = false.
     */
     virtual OperatorTensorDecomposition getSimpleOperatorDecomposition(const EOperator &operatorType) const override
@@ -124,9 +90,9 @@ namespace Intrepid2
         INTREPID2_TEST_FOR_EXCEPTION(true, std::invalid_argument, "Unsupported operator type");
       }
     }
-    
+
     using TensorBasis::getValues;
-    
+
     /** \brief  multi-component getValues() method (required/called by TensorBasis)
         \param [out] outputValues - the view into which to place the output values
         \param [in] operatorType - the operator on the basis
@@ -143,11 +109,11 @@ namespace Intrepid2
       {
         op1 = Intrepid2::OPERATOR_VALUE;
         op2 = Intrepid2::OPERATOR_VALUE;
-        
+
         // family 1 goes in the x component; 0 in the y component
         OutputViewType outputValuesComponent1 = Kokkos::subview(outputValues,Kokkos::ALL(),Kokkos::ALL(),0);
         OutputViewType outputValuesComponent2 = Kokkos::subview(outputValues,Kokkos::ALL(),Kokkos::ALL(),1);
-        
+
         this->TensorBasis::getValues(outputValuesComponent1,
                                      inputPoints1, op1,
                                      inputPoints2, op2, tensorPoints);
@@ -160,7 +126,7 @@ namespace Intrepid2
         // since this is H(VOL)(x) * H(GRAD)(y), this amounts to taking the derivative in the second tensorial component
         op1 = Intrepid2::OPERATOR_VALUE;
         op2 = Intrepid2::OPERATOR_GRAD;
-        
+
         double weight = -1.0; // the minus sign in front of d/dy
         this->TensorBasis::getValues(outputValues,
                                      inputPoints1, op1,
@@ -200,16 +166,16 @@ namespace Intrepid2
     using ExecutionSpace  = typename HGRAD_LINE::ExecutionSpace;
     using OutputValueType = typename HGRAD_LINE::OutputValueType;
     using PointValueType  = typename HGRAD_LINE::PointValueType;
-    
+
     using OutputViewType = typename HGRAD_LINE::OutputViewType;
     using PointViewType  = typename HGRAD_LINE::PointViewType ;
     using ScalarViewType = typename HGRAD_LINE::ScalarViewType;
-    
+
     using LineGradBasis = HGRAD_LINE;
     using LineHVolBasis = HVOL_LINE;
-    
+
     using BasisBase = typename HGRAD_LINE::BasisBase;
-    
+
     using TensorBasis = Basis_TensorBasis<BasisBase>;
 
     /** \brief  Constructor.
@@ -225,7 +191,7 @@ namespace Intrepid2
       this->functionSpace_ = FUNCTION_SPACE_HCURL;
       this->setShardsTopologyAndTags();
     }
-    
+
     /** \brief Returns a simple decomposition of the specified operator: what operator(s) should be applied to basis1, and what operator(s) to basis2.  A one-element vector corresponds to a single TensorData entry; a multiple-element vector corresponds to a VectorData object with axialComponents = false.
     */
     virtual OperatorTensorDecomposition getSimpleOperatorDecomposition(const EOperator &operatorType) const override
@@ -253,9 +219,9 @@ namespace Intrepid2
         INTREPID2_TEST_FOR_EXCEPTION(true, std::invalid_argument, "Unsupported operator type");
       }
     }
-    
+
     using TensorBasis::getValues;
-    
+
     /** \brief  multi-component getValues() method (required/called by TensorBasis)
         \param [out] outputValues - the view into which to place the output values
         \param [in] operatorType - the operator on the basis
@@ -272,17 +238,17 @@ namespace Intrepid2
       {
         op1 = Intrepid2::OPERATOR_VALUE;
         op2 = Intrepid2::OPERATOR_VALUE;
-        
+
         // family 2 goes in the y component; 0 in the x component
         auto outputValuesComponent1 = Kokkos::subview(outputValues,Kokkos::ALL(),Kokkos::ALL(),0);
         auto outputValuesComponent2 = Kokkos::subview(outputValues,Kokkos::ALL(),Kokkos::ALL(),1);
-        
+
         // place 0 in the x component
         Kokkos::deep_copy(outputValuesComponent1, 0.0);
         this->TensorBasis::getValues(outputValuesComponent2,
                                      inputPoints1, op1,
                                      inputPoints2, op2, tensorPoints);
-        
+
       }
       else if (operatorType == Intrepid2::OPERATOR_CURL)
       {
@@ -290,7 +256,7 @@ namespace Intrepid2
         // since this is H(GRAD)(x) * H(VOL)(y), this amounts to taking the derivative in the first tensorial component
         op1 = Intrepid2::OPERATOR_GRAD;
         op2 = Intrepid2::OPERATOR_VALUE;
-        
+
         this->TensorBasis::getValues(outputValues,
                                      inputPoints1, op1,
                                      inputPoints2, op2, tensorPoints);
@@ -319,7 +285,7 @@ namespace Intrepid2
       this->TensorBasis::getDofCoeffs(dofCoeffs2);
     }
   };
-  
+
   template<class HGRAD_LINE, class HVOL_LINE>
   class Basis_Derived_HCURL_QUAD
   : public Basis_DirectSumBasis <typename HGRAD_LINE::BasisBase>
@@ -340,7 +306,7 @@ namespace Intrepid2
     using ExecutionSpace  = typename HGRAD_LINE::ExecutionSpace;
     using OutputValueType = typename HGRAD_LINE::OutputValueType;
     using PointValueType  = typename HGRAD_LINE::PointValueType;
-    
+
     /** \brief  Constructor.
         \param [in] polyOrder_x - the polynomial order in the x dimension.
         \param [in] polyOrder_y - the polynomial order in the y dimension.
@@ -361,7 +327,7 @@ namespace Intrepid2
       order_y_ = polyOrder_y;
       pointType_ = pointType;
     }
-    
+
     /** \brief  Constructor.
         \param [in] polyOrder - the polynomial order to use in all dimensions.
         \param [in] pointType - type of lattice used for creating the DoF coordinates.
@@ -412,15 +378,15 @@ namespace Intrepid2
     }
 
     /** \brief Creates and returns a Basis object whose DeviceType template argument is Kokkos::HostSpace::device_type, but is otherwise identical to this.
-     
+
         \return Pointer to the new Basis object.
      */
     virtual HostBasisPtr<OutputValueType, PointValueType>
     getHostBasis() const override {
       using HostBasis  = Basis_Derived_HCURL_QUAD<typename HGRAD_LINE::HostBasis, typename HVOL_LINE::HostBasis>;
-      
+
       auto hostBasis = Teuchos::rcp(new HostBasis(order_x_, order_y_, pointType_));
-      
+
       return hostBasis;
     }
   };

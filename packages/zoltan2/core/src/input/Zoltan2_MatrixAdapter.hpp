@@ -1,46 +1,10 @@
 // @HEADER
-//
-// ***********************************************************************
-//
+// *****************************************************************************
 //   Zoltan2: A package of combinatorial algorithms for scientific computing
-//                  Copyright 2012 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Karen Devine      (kddevin@sandia.gov)
-//                    Erik Boman        (egboman@sandia.gov)
-//                    Siva Rajamanickam (srajama@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2012 NTESS and the Zoltan2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file Zoltan2_MatrixAdapter.hpp
@@ -121,6 +85,7 @@ public:
   using user_t = User;
   using userCoord_t = UserCoord;
   using base_adapter_t = MatrixAdapter<User,UserCoord>;
+  using device_t = typename node_t::device_type;
 #endif
 
   enum BaseAdapterType adapterType() const override {return MatrixAdapterType;}
@@ -262,14 +227,22 @@ public:
     Z2_THROW_NOT_IMPLEMENTED
   }
 
-  virtual void getRowWeightsHostView(typename BaseAdapter<User>::WeightsHostView& weights) const
-  {
+  virtual void getRowWeightsHostView(typename BaseAdapter<User>::WeightsHostView1D& weights,
+                                     int /* idx */ = 0) const {
       Z2_THROW_NOT_IMPLEMENTED
   }
 
-  virtual void getRowWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView& weights) const
-  {
+  virtual void getRowWeightsHostView(typename BaseAdapter<User>::WeightsHostView &weights) const {
+    Z2_THROW_NOT_IMPLEMENTED
+  }
+
+  virtual void getRowWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView1D& weights,
+                                       int /* idx */ = 0) const {
       Z2_THROW_NOT_IMPLEMENTED
+  }
+
+  virtual void getRowWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView &weights) const {
+    Z2_THROW_NOT_IMPLEMENTED
   }
 
   /*! \brief Indicate whether row weight with index idx should be the
@@ -371,14 +344,22 @@ public:
     Z2_THROW_NOT_IMPLEMENTED
   }
 
-  virtual void getColumnWeightsHostView(typename BaseAdapter<User>::WeightsHostView& weights) const
-  {
+  virtual void getColumnWeightsHostView(typename BaseAdapter<User>::WeightsHostView1D& weights,
+                                     int /* idx */ = 0) const {
       Z2_THROW_NOT_IMPLEMENTED
   }
 
-  virtual void getColumnWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView& weights) const
-  {
+  virtual void getColumnWeightsHostView(typename BaseAdapter<User>::WeightsHostView &weights) const {
+    Z2_THROW_NOT_IMPLEMENTED
+  }
+
+  virtual void getColumnWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView1D& weights,
+                                       int /* idx */ = 0) const {
       Z2_THROW_NOT_IMPLEMENTED
+  }
+
+  virtual void getColumnWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView &weights) const {
+    Z2_THROW_NOT_IMPLEMENTED
   }
 
   /*! \brief Indicate whether column weight with index idx should be the
@@ -553,7 +534,8 @@ public:
     }
   }
 
-  void getWeightsView(const scalar_t *&wgt, int &stride, int idx = 0) const override
+  void getWeightsView(const scalar_t *&wgt, int &stride,
+                      int idx = 0) const override
   {
     switch (getPrimaryEntityType()) {
     case MATRIX_ROW:
@@ -577,7 +559,7 @@ public:
     }
   }
 
-  virtual void getWeightsHostView(typename BaseAdapter<User>::WeightsHostView& hostWgts) const {
+  void getWeightsHostView(typename BaseAdapter<User>::WeightsHostView &hostWgts) const override {
       switch (getPrimaryEntityType()) {
       case MATRIX_ROW:
         getRowWeightsHostView(hostWgts);
@@ -599,13 +581,59 @@ public:
         break;
       }  }
 
-  virtual void getWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView& deviceWgts) const {
+  void getWeightsHostView(typename BaseAdapter<User>::WeightsHostView1D &hostWgts,
+                                  int idx = 0) const override {
+      switch (getPrimaryEntityType()) {
+      case MATRIX_ROW:
+        getRowWeightsHostView(hostWgts, idx);
+        break;
+      case MATRIX_COLUMN:
+        getColumnWeightsHostView(hostWgts, idx);
+        break;
+      case MATRIX_NONZERO:
+        {
+        // TODO:  Need getNonzeroWeightsView with Nonzeros as primary object?
+        // TODO:  That is, get Nonzeros' weights based on some nonzero ID?
+        std::ostringstream emsg;
+        emsg << __FILE__ << "," << __LINE__
+             << " error:  getWeightsView not yet supported for matrix nonzeros."
+             << std::endl;
+        throw std::runtime_error(emsg.str());
+        }
+      default:   // Shouldn't reach default; just making compiler happy
+        break;
+      }  }
+
+  void getWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView& deviceWgts) const override {
       switch (getPrimaryEntityType()) {
       case MATRIX_ROW:
         getRowWeightsDeviceView(deviceWgts);
         break;
       case MATRIX_COLUMN:
         getColumnWeightsDeviceView(deviceWgts);
+        break;
+      case MATRIX_NONZERO:
+        {
+        // TODO:  Need getNonzeroWeightsView with Nonzeros as primary object?
+        // TODO:  That is, get Nonzeros' weights based on some nonzero ID?
+        std::ostringstream emsg;
+        emsg << __FILE__ << "," << __LINE__
+             << " error:  getWeightsView not yet supported for matrix nonzeros."
+             << std::endl;
+        throw std::runtime_error(emsg.str());
+        }
+      default:   // Shouldn't reach default; just making compiler happy
+        break;
+      }  }
+
+  void getWeightsDeviceView(typename BaseAdapter<User>::WeightsDeviceView1D& deviceWgts,
+                                    int idx = 0) const override {
+      switch (getPrimaryEntityType()) {
+      case MATRIX_ROW:
+        getRowWeightsDeviceView(deviceWgts, idx);
+        break;
+      case MATRIX_COLUMN:
+        getColumnWeightsDeviceView(deviceWgts, idx);
         break;
       case MATRIX_NONZERO:
         {

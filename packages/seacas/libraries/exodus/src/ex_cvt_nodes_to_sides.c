@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020, 2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2023, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -171,7 +171,6 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
                           void_int *side_sets_elem_list, void_int *side_sets_node_list,
                           void_int *side_sets_side_list)
 {
-  size_t    i, j, k, n;
   int       num_side_sets, num_elem_blks;
   int64_t   tot_num_elem = 0, tot_num_ss_elem = 0, elem_num = 0, ndim;
   void_int *elem_blk_ids     = NULL;
@@ -179,7 +178,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   void_int *ss_elem_ndx      = NULL;
   void_int *ss_elem_node_ndx = NULL;
   void_int *ss_parm_ndx      = NULL;
-  size_t    elem_ctr, node_ctr, elem_num_pos;
+  int64_t   elem_ctr, node_ctr, elem_num_pos;
   int       num_nodes_per_elem, num_node_per_side;
 
   int *same_elem_type = NULL;
@@ -188,7 +187,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   int int_size;
   int ids_size;
 
-  struct ex__elem_blk_parm *elem_blk_parms = NULL;
+  struct exi_elem_blk_parm *elem_blk_parms = NULL;
 
   int err_stat = EX_NOERR;
 
@@ -203,48 +202,10 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
      is also the side number.
   */
 
-  /*   1     2     3     4                                          node 1 */
-  static int shell_table[2][8] = {
-      {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
-      {1, 2, 1, 2, 1, 2, 1, 2}  /* side # */
-  };
-
-  /*    1     2   3    4                                          node 1 */
-  static int shell_edge_table[2][8] = {
-      {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
-      {3, 6, 4, 3, 5, 4, 6, 5}  /* side # */
-  };
-
-  /*   1     2     3                                               node 1 */
-  static int trishell_table[2][6] = {
-      {2, 3, 3, 1, 1, 2}, /* node 2 */
-      {1, 2, 1, 2, 1, 2}  /* side # */
-  };
-
-  /*     1      2      3      4                                   node 1 */
-  static int tetra_table[2][12] = {
-      {2, 3, 4, 1, 3, 4, 4, 1, 2, 1, 2, 3}, /* node 2 */
-      {1, 4, 3, 4, 2, 1, 2, 3, 4, 1, 2, 3}  /* side # */
-  };
-
-#if 0
-  static int wedge_table[2][18]  = {
-    /*     1      2      3      4      5      6                     node 1 */
-    {2,4,3, 5,1,3, 6,1,2, 1,6,5, 6,2,4, 4,3,5},              /* node 2 */
-    {1,3,4, 1,4,2, 2,3,4, 1,3,5, 5,2,1, 5,3,2}               /* side # */
-  };
-#endif
-
-  static int hex_table[2][24] = {
-      /*     1        2        3        4        5        6        7        8       node 1 */
-      {4, 2, 5, 1, 3, 6, 7, 4, 2, 3, 1, 8, 6, 8, 1, 5, 2, 7, 8, 6, 3, 7, 5, 4}, /* node 2 */
-      {5, 1, 4, 5, 2, 1, 2, 3, 5, 5, 4, 3, 6, 4, 1, 1, 2, 6, 6, 2, 3, 3, 6, 4}  /* side # */
-  };
-
   char errmsg[MAX_ERR_LENGTH];
 
   EX_FUNC_ENTER();
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -293,12 +254,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
   /* First count up # of elements in the side sets*/
   if (ints_64) {
-    for (i = 0; i < num_side_sets; i++) {
+    for (int i = 0; i < num_side_sets; i++) {
       tot_num_ss_elem += ((int64_t *)num_elem_per_set)[i];
     }
   }
   else {
-    for (i = 0; i < num_side_sets; i++) {
+    for (int i = 0; i < num_side_sets; i++) {
       tot_num_ss_elem += ((int *)num_elem_per_set)[i];
     }
   }
@@ -317,18 +278,18 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   if (int_size == sizeof(int64_t)) {
     /* Sort side set element list into index array  - non-destructive */
     int64_t *elems = (int64_t *)ss_elem_ndx;
-    for (i = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0; i < tot_num_ss_elem; i++) {
       elems[i] = i; /* init index array to current position */
     }
-    ex__iqsort64(side_sets_elem_list, elems, tot_num_ss_elem);
+    exi_iqsort64(side_sets_elem_list, elems, tot_num_ss_elem);
   }
   else {
     /* Sort side set element list into index array  - non-destructive */
     int *elems = (int *)ss_elem_ndx;
-    for (i = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0; i < tot_num_ss_elem; i++) {
       elems[i] = i; /* init index array to current position */
     }
-    ex__iqsort(side_sets_elem_list, elems, tot_num_ss_elem);
+    exi_iqsort(side_sets_elem_list, elems, tot_num_ss_elem);
   }
 
   /* Allocate space for the element block ids */
@@ -353,7 +314,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   }
 
   /* Allocate space for the element block params */
-  if (!(elem_blk_parms = malloc(num_elem_blks * sizeof(struct ex__elem_blk_parm)))) {
+  if (!(elem_blk_parms = malloc(num_elem_blks * sizeof(struct exi_elem_blk_parm)))) {
     snprintf(errmsg, MAX_ERR_LENGTH,
              "ERROR: failed to allocate space for element block params "
              "for file id %d",
@@ -363,7 +324,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
     goto cleanup;
   }
   elem_ctr = 0;
-  for (i = 0; i < num_elem_blks; i++) {
+  for (int i = 0; i < num_elem_blks; i++) {
     ex_entity_id id;
     if (ints_64) {
       id = ((int64_t *)elem_blk_ids)[i];
@@ -372,7 +333,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
       id = ((int *)elem_blk_ids)[i];
     }
 
-    err_stat = ex__get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
+    err_stat = exi_get_block_param(exoid, id, ndim, &elem_blk_parms[i]);
     if (err_stat != EX_NOERR) {
       goto cleanup;
     }
@@ -421,9 +382,10 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   same_elem_type[0] = true;
   if (ints_64) {
     elem_ctr = ((int64_t *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    for (int64_t i = 0, k = 0; i < tot_num_ss_elem; i++) {
       int64_t elem = ((int64_t *)side_sets_elem_list)[i];
-      for (j = 0; j < num_elem_blks; j++) {
+      int     j    = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -458,10 +420,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
     */
     node_ctr = 0;
     elem_ctr = ((int64_t *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    int i    = 0;
+    for (int k = 0; i < tot_num_ss_elem; i++) {
       int64_t elem = ((int64_t *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -498,10 +462,11 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
   }
   else {
     elem_ctr = ((int *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    for (int i = 0, k = 0; i < tot_num_ss_elem; i++) {
       int elem = ((int *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -536,10 +501,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
     */
     node_ctr = 0;
     elem_ctr = ((int *)num_elem_per_set)[0];
-    for (i = 0, k = 0; i < tot_num_ss_elem; i++) {
+    int i    = 0;
+    for (int k = 0; i < tot_num_ss_elem; i++) {
       int elem = ((int *)side_sets_elem_list)[i];
 
-      for (j = 0; j < num_elem_blks; j++) {
+      int j = 0;
+      for (; j < num_elem_blks; j++) {
         if (elem <= elem_blk_parms[j].elem_ctr) {
           break;
         }
@@ -579,7 +546,7 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
   elem_ctr = 0;
 
-  for (j = 0; j < tot_num_ss_elem; j++) {
+  for (int j = 0; j < tot_num_ss_elem; j++) {
     int64_t elem;
     int64_t idx;
     int64_t ss_node0, ss_node1;
@@ -655,7 +622,8 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
 
     num_nodes_per_elem = elem_blk_parms[p_ndx].num_nodes_per_elem;
 
-    for (n = 0; n < num_nodes_per_elem; n++) {
+    int n = 0;
+    for (; n < num_nodes_per_elem; n++) {
       /* find node in connectivity array that matches first node in side set */
       if (((int_size == sizeof(int64_t)) &&
            (ss_node0 == ((int64_t *)connect)[num_nodes_per_elem * (elem_num_pos) + n])) ||
@@ -678,6 +646,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_TRISHELL: {
           /* use table to find which node to compare to next */
+          /*   1     2     3                                               node 1 */
+          static const int trishell_table[2][6] = {
+              {2, 3, 3, 1, 1, 2}, /* node 2 */
+              {1, 2, 1, 2, 1, 2}  /* side # */
+          };
+
           assert(n < 3);
           if (ss_node1 ==
               get_node(connect,
@@ -717,6 +691,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
           }
 
           if (num_node_per_side >= 4) {
+            /*   1     2     3     4                                          node 1 */
+            static const int shell_table[2][8] = {
+                {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
+                {1, 2, 1, 2, 1, 2, 1, 2}  /* side # */
+            };
+
             /* Front or Back side of shell */
             if (ss_node1 ==
                 get_node(connect, num_nodes_per_elem * (elem_num_pos) + (shell_table[0][2 * n] - 1),
@@ -743,6 +723,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
           }
           else {
             /* Edge sides of shell */
+            /*    1     2   3    4                                          node 1 */
+            static const int shell_edge_table[2][8] = {
+                {2, 4, 3, 1, 4, 2, 1, 3}, /* node 2 */
+                {3, 6, 4, 3, 5, 4, 6, 5}  /* side # */
+            };
+
             if (ss_node1 ==
                 get_node(connect,
                          num_nodes_per_elem * (elem_num_pos) + (shell_edge_table[0][2 * n] - 1),
@@ -771,6 +757,13 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_HEX: {
           /* use table to find which node to compare to next */
+          static const int hex_table[2][24] = {
+              /*     1        2        3        4        5        6        7        8       node 1
+               */
+              {4, 2, 5, 1, 3, 6, 7, 4, 2, 3, 1, 8, 6, 8, 1, 5, 2, 7, 8, 6, 3, 7, 5, 4}, /* node 2 */
+              {5, 1, 4, 5, 2, 1, 2, 3, 5, 5, 4, 3, 6, 4, 1, 1, 2, 6, 6, 2, 3, 3, 6, 4}  /* side # */
+          };
+
           assert(n < 8);
 
           if (ss_node1 == get_node(connect,
@@ -803,6 +796,12 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         }
         case EX_EL_TETRA: {
           /* use table to find which node to compare to next */
+          /*  1         2          3          4            node 1 */
+          static const int tetra_table[2][12] = {
+              {2, 3, 4, 1, 3, 4, 4, 1, 2, 1, 2, 3}, /* node 2 */
+              {1, 4, 3, 4, 2, 1, 2, 3, 4, 1, 2, 3}  /* side # */
+          };
+
           assert(n < 4);
 
           if (ss_node1 ==
@@ -847,6 +846,14 @@ int ex_cvt_nodes_to_sides(int exoid, void_int *num_elem_per_set, void_int *num_n
         case EX_EL_WEDGE: {
           /* NOTE: WEDGE elements in side set node lists are currently not
            * supported */
+#if 0
+	  static const int wedge_table[2][18]  = {
+	    /*     1      2      3      4      5      6                     node 1 */
+	    {2,4,3, 5,1,3, 6,1,2, 1,6,5, 6,2,4, 4,3,5},              /* node 2 */
+	    {1,3,4, 1,4,2, 2,3,4, 1,3,5, 5,2,1, 5,3,2}               /* side # */
+	  };
+#endif
+
           snprintf(errmsg, MAX_ERR_LENGTH,
                    "ERROR: unsupported WEDGE element found in side set "
                    "node list in file id %d",

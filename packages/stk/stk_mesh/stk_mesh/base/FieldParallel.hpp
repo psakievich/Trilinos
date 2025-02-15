@@ -41,7 +41,6 @@
 #include <stk_mesh/base/BulkData.hpp>
 #include <stk_util/parallel/Parallel.hpp>  // for ParallelMachine
 #include <stk_util/parallel/ParallelComm.hpp>
-#include <stk_util/parallel/CommNeighbors.hpp>
 #include <stk_util/util/ReportHandler.hpp>  // for ThrowRequireMsg
 
 #include <stddef.h>                     // for size_t
@@ -60,19 +59,6 @@ namespace mesh {
  * For entities that are ghosted, this function updates field-data from the
  * original entity to the ghosts.
  */
-#ifndef STK_HIDE_DEPRECATED_CODE //delete after Aug 2023
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use communicate_field_data(ghosts, fields).")
-void communicate_field_data(
-  const Ghosting                        & ghosts ,
-  const std::vector< const FieldBase *> & fields ,
-  bool syncOnlySharedOrGhosted);
-
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use communicate_field_data(mesh, fields).")
-void communicate_field_data(const BulkData& mesh ,
-                            const std::vector< const FieldBase *> & fields ,
-                            bool syncOnlySharedOrGhosted);
-#endif
-
 void communicate_field_data(const Ghosting& ghosts, const std::vector<const FieldBase*>& fields);
 
 void communicate_field_data(const BulkData& mesh, const std::vector<const FieldBase*>& fields);
@@ -86,17 +72,6 @@ void copy_owned_to_shared( const BulkData& mesh,
 {
   communicate_field_data(*mesh.ghostings()[BulkData::SHARED], fields);
 }
-
-#ifndef STK_HIDE_DEPRECATED_CODE //delete after Aug 2023
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use copy_owned_to_shared(mesh, fields).")
-inline
-void copy_owned_to_shared( const BulkData& mesh,
-                           const std::vector< const FieldBase *> & fields,
-                           bool syncOnlySharedOrGhosted)
-{
-  copy_owned_to_shared(mesh, fields);
-}
-#endif
 
 //----------------------------------------------------------------------
 

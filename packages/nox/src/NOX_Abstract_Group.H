@@ -1,52 +1,11 @@
- // $Id$
- // $Source$
-
-//@HEADER
-// ************************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //            NOX: An Object-Oriented Nonlinear Solver Package
-//                 Copyright (2002) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Roger Pawlowski (rppawlo@sandia.gov) or
-// Eric Phipps (etphipp@sandia.gov), Sandia National Laboratories.
-// ************************************************************************
-//  CVS Information
-//  $Source$
-//  $Author$
-//  $Date$
-//  $Revision$
-// ************************************************************************
-//@HEADER
+// Copyright 2002 NTESS and the NOX contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef NOX_ABSTRACT_GROUP_H
 #define NOX_ABSTRACT_GROUP_H
@@ -176,7 +135,7 @@ namespace Abstract {
 
    */
    virtual void computeX(const NOX::Abstract::Group& grp,
-             const NOX::Abstract::Vector& d, double step) = 0;
+                         const NOX::Abstract::Vector& d, double step) = 0;
 
    //! Compute and store F(x).
    /*!
@@ -294,7 +253,7 @@ namespace Abstract {
    */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobian(const NOX::Abstract::Vector& input,
-         NOX::Abstract::Vector& result) const;
+                 NOX::Abstract::Vector& result) const;
 
    //! Applies Jacobian-Transpose to the given input vector and puts the answer in the result.
 
@@ -313,7 +272,7 @@ namespace Abstract {
    */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobianTranspose(const NOX::Abstract::Vector& input,
-              NOX::Abstract::Vector& result) const;
+                          NOX::Abstract::Vector& result) const;
 
    /*!
      \brief Applies the inverse of the Jacobian matrix to the given
@@ -345,8 +304,8 @@ namespace Abstract {
    */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobianInverse(Teuchos::ParameterList& params,
-            const NOX::Abstract::Vector& input,
-            NOX::Abstract::Vector& result) const;
+                        const NOX::Abstract::Vector& input,
+                        NOX::Abstract::Vector& result) const;
 
    //! Apply right preconditiong to the given input vector
    /*!
@@ -384,9 +343,9 @@ namespace Abstract {
    */
    virtual NOX::Abstract::Group::ReturnType
    applyRightPreconditioning(bool useTranspose,
-                 Teuchos::ParameterList& params,
-                 const NOX::Abstract::Vector& input,
-                 NOX::Abstract::Vector& result) const;
+                             Teuchos::ParameterList& params,
+                             const NOX::Abstract::Vector& input,
+                             NOX::Abstract::Vector& result) const;
   //@}
 
    /** @name Block Jacobian operations.
@@ -404,7 +363,7 @@ namespace Abstract {
     */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobianMultiVector(const NOX::Abstract::MultiVector& input,
-                NOX::Abstract::MultiVector& result) const;
+                            NOX::Abstract::MultiVector& result) const;
 
    //! applyJacobianTranspose for multiple right-hand sides
    /*!
@@ -414,7 +373,7 @@ namespace Abstract {
     */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobianTransposeMultiVector(const NOX::Abstract::MultiVector& input,
-                     NOX::Abstract::MultiVector& result) const;
+                                     NOX::Abstract::MultiVector& result) const;
 
    //! applyJacobianInverse for multiple right-hand sides
    /*!
@@ -424,8 +383,8 @@ namespace Abstract {
     */
    virtual NOX::Abstract::Group::ReturnType
    applyJacobianInverseMultiVector(Teuchos::ParameterList& params,
-                   const NOX::Abstract::MultiVector& input,
-                   NOX::Abstract::MultiVector& result) const;
+                                   const NOX::Abstract::MultiVector& input,
+                                   NOX::Abstract::MultiVector& result) const;
 
    //! applyRightPreconditioning for multiple right-hand sides
    /*!
@@ -434,11 +393,10 @@ namespace Abstract {
     * block method is available.
     */
    virtual NOX::Abstract::Group::ReturnType
-   applyRightPreconditioningMultiVector(
-                    bool useTranspose,
-                    Teuchos::ParameterList& params,
-                    const NOX::Abstract::MultiVector& input,
-                    NOX::Abstract::MultiVector& result) const;
+   applyRightPreconditioningMultiVector(bool useTranspose,
+                                        Teuchos::ParameterList& params,
+                                        const NOX::Abstract::MultiVector& input,
+                                        NOX::Abstract::MultiVector& result) const;
 
    //@}
 
@@ -560,7 +518,21 @@ namespace Abstract {
 
   //@}
 
-private:
+   /** \brief Return an internally stored group from this group.
+
+       This is typically used to access sub-block Groups from a
+       bordered/blocked system Group. The returned sub-block group is
+       chosen by outer Group.
+    */
+   virtual Teuchos::RCP<NOX::Abstract::Group> getNestedGroup();
+
+   /** \brief Return an internally stored group from this group.
+
+       This is typically used to access sub-block Groups from a
+       bordered/blocked system Group. The returned sub-block group is
+       chosen by outer Group.
+    */
+   virtual Teuchos::RCP<const NOX::Abstract::Group> getNestedGroup() const;
 
 };
 } // namespace Abstract

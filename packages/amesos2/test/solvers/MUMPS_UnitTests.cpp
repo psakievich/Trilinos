@@ -1,44 +1,10 @@
 // @HEADER
-//
-// ***********************************************************************
-//
+// *****************************************************************************
 //           Amesos2: Templated Direct Sparse Solver Package
-//                  Copyright 2011 Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//
+// Copyright 2011 NTESS and the Amesos2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #include <string>
@@ -97,7 +63,6 @@ namespace {
   using Tpetra::createUniformContigMap;
 
   using Amesos2::MUMPS;
-  using Amesos2::Meta::is_same;
 
   typedef Tpetra::Map<>::node_type Node;
 
@@ -143,7 +108,7 @@ namespace {
      *
      * - All Constructors
      * - Correct initialization of class members
-     * - Correct typedefs ( using Amesos2::is_same<> )
+     * - Correct typedefs
      */
     typedef ScalarTraits<SCALAR> ST;
     typedef CrsMatrix<SCALAR,LO,GO,Node> MAT;
@@ -181,13 +146,13 @@ namespace {
     TEST_ASSERT( solver->getStatus().getNumSolve() == 0 );
 
     // The following should all pass at compile time
-    //TEST_ASSERT( (is_same<MAT,typename SOLVER::matrix_type>::value) );
-    //TEST_ASSERT( (is_same<MV,typename SOLVER::vector_type>::value) );
-    //TEST_ASSERT( (is_same<SCALAR,typename SOLVER::scalar_type>::value) );
-    //TEST_ASSERT( (is_same<LO,typename SOLVER::local_ordinal_type>::value) );
-    //TEST_ASSERT( (is_same<GO,typename SOLVER::global_ordinal_type>::value) );
-    //TEST_ASSERT( (is_same<global_size_t,typename SOLVER::global_size_type>::value) );
-    // TEST_ASSERT( (is_same<Node,typename SOLVER::node_type>::value) );
+    //TEST_ASSERT( (std::is_same_v<MAT,typename SOLVER::matrix_type>) );
+    //TEST_ASSERT( (std::is_same_v<MV,typename SOLVER::vector_type>) );
+    //TEST_ASSERT( (std::is_same_v<SCALAR,typename SOLVER::scalar_type>) );
+    //TEST_ASSERT( (std::is_same_v<LO,typename SOLVER::local_ordinal_type>) );
+    //TEST_ASSERT( (std::is_same_v<GO,typename SOLVER::global_ordinal_type>) );
+    //TEST_ASSERT( (std::is_same_v<global_size_t,typename SOLVER::global_size_type>) );
+    // TEST_ASSERT( (std::is_same_v<Node,typename SOLVER::node_type>) );
   }
 
 

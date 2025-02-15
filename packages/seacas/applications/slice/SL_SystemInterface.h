@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2022 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -18,7 +18,6 @@ class SystemInterface
 {
 public:
   SystemInterface();
-  ~SystemInterface();
 
   bool parse_options(int argc, char **argv);
 
@@ -91,15 +90,21 @@ private:
 
 public:
   int         compressionLevel_{0};
+  int         quantizeNSD_{0};
   bool        shuffle_{false};
   bool        ints64Bit_{false};
   bool        netcdf4_{false};
   bool        netcdf5_{false};
   bool        disableFieldRecognition_{false};
+  bool        zlib_{false};
   bool        szip_{false};
-  bool        zlib_{true};
+  bool        zstd_{false};
+  bool        bz2_{false};
   bool        outputDecompMap_{false};
   bool        outputDecompField_{false};
+  bool        ignore_x_{false};
+  bool        ignore_y_{false};
+  bool        ignore_z_{false};
   bool        lineDecomp_{false};
   std::string lineSurfaceList_{};
 

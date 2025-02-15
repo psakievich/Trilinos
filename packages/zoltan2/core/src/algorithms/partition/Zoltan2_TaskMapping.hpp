@@ -1,3 +1,11 @@
+// @HEADER
+// *****************************************************************************
+//   Zoltan2: A package of combinatorial algorithms for scientific computing
+//
+// Copyright 2012 NTESS and the Zoltan2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef _ZOLTAN2_COORD_PARTITIONMAPPING_HPP_
 #define _ZOLTAN2_COORD_PARTITIONMAPPING_HPP_
@@ -1762,7 +1770,7 @@ protected:
       Kokkos::Cuda, Kokkos::CudaSpace>;
 #elif defined(KOKKOS_ENABLE_HIP)
     using node_t = Tpetra::KokkosCompat::KokkosDeviceWrapperNode<
-      Kokkos::Experimental::HIP, Kokkos::Experimental::HIPSpace>;
+      Kokkos::HIP, Kokkos::HIPSpace>;
 #else
   using node_t = typename Adapter::node_t;
 #endif

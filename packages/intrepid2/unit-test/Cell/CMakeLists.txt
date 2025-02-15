@@ -8,6 +8,10 @@ LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "DOUBLE")
 LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "double")
 LIST(APPEND Intrepid2_TEST_ETI_SACADO         "0")
 
+LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "FLOAT")
+LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "float")
+LIST(APPEND Intrepid2_TEST_ETI_SACADO         "0")
+
 IF (HAVE_INTREPID2_SACADO) 
 #  LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE_NAME "DFAD_DOUBLE")
 #  LIST(APPEND Intrepid2_TEST_ETI_VALUETYPE      "Sacado::Fad::DFad<double>")
@@ -63,7 +67,7 @@ IF (${ETI_DEVICE_COUNT} GREATER_EQUAL 0)
 ENDIF()
 
 # Device test
-SET(Intrepid2_TEST_ETI_FILE "test_01;test_02;test_03;test_04;test_06")
+SET(Intrepid2_TEST_ETI_FILE "test_01;test_02;test_03;test_04;test_05;test_06;test_07")
 
 SET(Intrepid2_TEST_ETI_DEVICE_NAME "")
 SET(Intrepid2_TEST_ETI_DEVICE "")
@@ -74,7 +78,7 @@ IF(Kokkos_ENABLE_CUDA)
 ENDIF()
 IF(Kokkos_ENABLE_HIP)
   LIST(APPEND Intrepid2_TEST_ETI_DEVICE_NAME "HIP")
-  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::Experimental::HIP,Kokkos::Experimental::HIPSpace>")
+  LIST(APPEND Intrepid2_TEST_ETI_DEVICE      "Kokkos::Device<Kokkos::HIP,Kokkos::HIPSpace>")
 ENDIF()
 
 LIST(LENGTH Intrepid2_TEST_ETI_DEVICE_NAME ETI_DEVICE_COUNT)

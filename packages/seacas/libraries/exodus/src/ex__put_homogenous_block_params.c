@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2023 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -15,14 +15,14 @@
  * Permits some optimizations and safer for N->1 parallel.
  * Arbitrary  polyhedra are handled in more general routine; not here.
  */
-int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct ex_block *blocks)
+int exi_put_homogenous_block_params(int exoid, size_t block_count, const struct ex_block *blocks)
 {
 
   int  status;
   int  varid, dims[2];
   char errmsg[MAX_ERR_LENGTH];
 
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -47,7 +47,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
              "ERROR: Bad block type (%d) specified for all blocks file id %d", blocks[0].type,
              exoid);
     ex_err_fn(exoid, __func__, errmsg, EX_BADPARAM);
-    return (EX_FATAL);
+    return EX_FATAL;
   }
 
   { /* Output ids for this block */
@@ -58,7 +58,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                "array in file id %d",
                exoid);
       ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
 
     for (size_t i = 0; i < block_count; i++) {
@@ -70,7 +70,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                ex_name_of_object(blocks[0].type), exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
       free(ids);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
 
     if ((status = nc_put_var_longlong(exoid, varid, ids)) != NC_NOERR) {
@@ -78,7 +78,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                ex_name_of_object(blocks[0].type), exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
       free(ids);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
     free(ids);
   }
@@ -91,7 +91,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                "array in file id %d",
                exoid);
       ex_err_fn(exoid, __func__, errmsg, EX_MEMFAIL);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
 
     for (size_t i = 0; i < block_count; i++) {
@@ -103,7 +103,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                ex_name_of_object(blocks[0].type), exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
       free(stat);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
 
     if ((status = nc_put_var_int(exoid, varid, stat)) != NC_NOERR) {
@@ -111,17 +111,17 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
                ex_name_of_object(blocks[0].type), exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
       free(stat);
-      return (EX_FATAL);
+      return EX_FATAL;
     }
     free(stat);
   }
 
   /* ======================================================================== */
   /* put netcdf file into define mode  */
-  if ((status = nc_redef(exoid)) != NC_NOERR) {
+  if ((status = exi_redef(exoid, __func__)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to place file id %d into define mode", exoid);
     ex_err_fn(exoid, __func__, errmsg, status);
-    return (EX_FATAL);
+    return EX_FATAL;
   }
 
   /* inquire previously defined dimensions  */
@@ -133,7 +133,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
   }
 
   for (size_t i = 0; i < block_count; i++) {
-    int blk_id_ndx = 1 + ex__inc_file_item(exoid, ex__get_counter_list(blocks[i].type));
+    int blk_id_ndx = 1 + exi_inc_file_item(exoid, exi_get_counter_list(blocks[i].type));
 
     if (blocks[i].num_entry == 0) { /* Is this a NULL element block? */
       continue;
@@ -266,7 +266,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
         ex_err_fn(exoid, __func__, errmsg, status);
         goto error_ret; /* exit define mode and return */
       }
-      ex__compress_variable(exoid, varid, 2);
+      exi_compress_variable(exoid, varid, 2);
 
       /* Attribute names... */
       dims[0] = numattrdim;
@@ -305,7 +305,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
         ex_err_fn(exoid, __func__, errmsg, status);
         goto error_ret; /* exit define mode and return */
       }
-      ex__compress_variable(exoid, connid, 1);
+      exi_compress_variable(exoid, connid, 1);
 
       /* store element type as attribute of connectivity variable */
       if ((status = nc_put_att_text(exoid, connid, ATT_NAME_ELB, strlen(blocks[i].topology) + 1,
@@ -345,10 +345,10 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
   }
 
   /* leave define mode  */
-  if ((status = ex__leavedef(exoid, __func__)) != NC_NOERR) {
+  if ((status = exi_leavedef(exoid, __func__)) != NC_NOERR) {
     snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to exit define mode in file id %d", exoid);
     ex_err_fn(exoid, __func__, errmsg, status);
-    return (EX_FATAL);
+    return EX_FATAL;
   }
 
   /* ======================================================================== */
@@ -357,7 +357,7 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
     case EX_EDGE_BLOCK: vblkids = VAR_ID_ED_BLK; break;
     case EX_FACE_BLOCK: vblkids = VAR_ID_FA_BLK; break;
     case EX_ELEM_BLOCK: vblkids = VAR_ID_EL_BLK; break;
-    default: return (EX_FATAL); /* should have been handled earlier; quiet compiler here */
+    default: return EX_FATAL; /* should have been handled earlier; quiet compiler here */
     }
 
     int att_name_varid = -1;
@@ -375,17 +375,17 @@ int ex__put_homogenous_block_params(int exoid, size_t block_count, const struct 
       start[1] = 0;
       count[1] = strlen(text) + 1;
 
-      for (size_t j = 0; j < blocks[i].num_attribute; j++) {
+      for (int64_t j = 0; j < blocks[i].num_attribute; j++) {
         start[0] = j;
         nc_put_vara_text(exoid, att_name_varid, start, count, text);
       }
     }
   }
 
-  return (EX_NOERR);
+  return EX_NOERR;
 
 /* Fatal error: exit definition mode and return */
 error_ret:
-  ex__leavedef(exoid, __func__);
-  return (EX_FATAL);
+  exi_leavedef(exoid, __func__);
+  return EX_FATAL;
 }

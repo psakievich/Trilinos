@@ -1,5 +1,5 @@
 /*
- * Copyright(C) 1999-2020, 2022 National Technology & Engineering Solutions
+ * Copyright(C) 1999-2020, 2022, 2024 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  *
@@ -25,7 +25,7 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
 
   EX_FUNC_ENTER();
 
-  if (ex__check_valid_file_id(exoid, __func__) == EX_FATAL) {
+  if (exi_check_valid_file_id(exoid, __func__) == EX_FATAL) {
     EX_FUNC_LEAVE(EX_FATAL);
   }
 
@@ -37,15 +37,15 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
 
   int *entlst_id = (int *)calloc(count, sizeof(int));
 
-  int  max_name_len = 0;
-  bool in_define    = false;
+  size_t max_name_len = 0;
+  bool   in_define    = false;
   for (size_t i = 0; i < count; i++) {
     /* See if an assembly with this id has already been defined or exists on file... */
     if (nc_inq_varid(exoid, VAR_ENTITY_ASSEMBLY(assemblies[i].id), &entlst_id[i]) != NC_NOERR) {
       /* Assembly has not already been defined */
       /* put netcdf file into define mode  */
       if (!in_define) {
-        if ((status = nc_redef(exoid)) != NC_NOERR) {
+        if ((status = exi_redef(exoid, __func__)) != NC_NOERR) {
           snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to put file id %d into define mode",
                    exoid);
           ex_err_fn(exoid, __func__, errmsg, status);
@@ -106,7 +106,7 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
         }
         goto error_ret; /* exit define mode and return */
       }
-      ex__compress_variable(exoid, entlst_id[i], 1);
+      exi_compress_variable(exoid, entlst_id[i], 1);
 
       if (ex_int64_status(exoid) & EX_IDS_INT64_DB) {
         long long tmp = assemblies[i].id;
@@ -158,7 +158,7 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
       }
 
       /* Increment assembly count */
-      struct ex__file_item *file = ex__find_file_item(exoid);
+      struct exi_file_item *file = exi_find_file_item(exoid);
       if (file) {
         file->assembly_count++;
       }
@@ -166,7 +166,7 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
   }
   /* leave define mode  */
   if (in_define) {
-    if ((status = ex__leavedef(exoid, __func__)) != NC_NOERR) {
+    if ((status = exi_leavedef(exoid, __func__)) != NC_NOERR) {
       snprintf(errmsg, MAX_ERR_LENGTH, "ERROR: failed to exit define mode in file id %d", exoid);
       ex_err_fn(exoid, __func__, errmsg, status);
       free(entlst_id);
@@ -176,7 +176,9 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
   }
 
   /* Update the maximum_name_length attribute on the file. */
-  ex__update_max_name_length(exoid, max_name_len - 1);
+  if (max_name_len > 0) {
+    exi_update_max_name_length(exoid, max_name_len - 1);
+  }
 
   /* Assembly are now all defined; see if any set data needs to be output... */
   for (size_t i = 0; i < count; i++) {
@@ -198,7 +200,7 @@ int ex_put_assemblies(int exoid, size_t count, const struct ex_assembly *assembl
 /* Fatal error: exit definition mode and return */
 error_ret:
   if (in_define) {
-    ex__leavedef(exoid, __func__);
+    exi_leavedef(exoid, __func__);
   }
   free(entlst_id);
   EX_FUNC_LEAVE(EX_FATAL);

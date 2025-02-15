@@ -1,31 +1,12 @@
 // @HEADER
-// ***********************************************************************
-//
+// *****************************************************************************
 //                           Sacado Package
-//                 Copyright (2006) Sandia Corporation
 //
-// Under the terms of Contract DE-AC04-94AL85000 with Sandia Corporation,
-// the U.S. Government retains certain rights in this software.
-//
-// This library is free software; you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as
-// published by the Free Software Foundation; either version 2.1 of the
-// License, or (at your option) any later version.
-//
-// This library is distributed in the hope that it will be useful, but
-// WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301
-// USA
-// Questions? Contact David M. Gay (dmgay@sandia.gov) or Eric T. Phipps
-// (etphipp@sandia.gov).
-//
-// ***********************************************************************
+// Copyright 2006 NTESS and the Sacado contributors.
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// *****************************************************************************
 // @HEADER
+
 #include "Teuchos_UnitTestHarness.hpp"
 #include "Teuchos_UnitTestRepository.hpp"
 #include "Teuchos_GlobalMPISession.hpp"
@@ -54,7 +35,7 @@ typedef Kokkos::LayoutContiguous<Kokkos::LayoutRight,64> RightContiguous64;
 //  work for DFads on HIP. See the file Sacado_DynamicArrayTriats.hpp
 //  for cuda specializations that need to be mirrored into HIP.
 
-// using Kokkos::Experimental::HIP;
+// using Kokkos::HIP;
 // VIEW_FAD_TESTS_FDC(  DFadType , HIP )
 
 int main( int argc, char* argv[] ) {
@@ -68,7 +49,7 @@ int main( int argc, char* argv[] ) {
 
 #if defined(SACADO_KOKKOS_USE_MEMORY_POOL)
   Sacado::createGlobalMemoryPool(
-    Kokkos::Experimental::HIP(),
+    Kokkos::HIP(),
     2*64*global_fad_size*global_num_rows*global_num_cols*sizeof(double),
     global_fad_size*sizeof(double),
     4*global_fad_size*sizeof(double),
@@ -78,7 +59,7 @@ int main( int argc, char* argv[] ) {
   int res = Teuchos::UnitTestRepository::runUnitTestsFromMain(argc, argv);
 
 #if defined(SACADO_KOKKOS_USE_MEMORY_POOL)
-  Sacado::destroyGlobalMemoryPool(Kokkos::Experimental::HIP());
+  Sacado::destroyGlobalMemoryPool(Kokkos::HIP());
 #endif
 
   // Finalize Cuda

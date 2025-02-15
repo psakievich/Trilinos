@@ -1,4 +1,4 @@
-// Copyright(C) 1999-2021, 2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2021, 2023, 2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
@@ -6,6 +6,7 @@
 
 #include "smart_assert.h" // for SMART_ASSERT
 #include "stringx.h"
+
 #include <cctype>  // for tolower, isspace
 #include <cstring> // for strspn, strcspn
 #include <string>  // for string, operator==
@@ -82,7 +83,7 @@ std::string extract_token(std::string &s, const char *delimiters)
       // action outside of this block of code.
 
       // Find the closing quote
-      auto cq = s.find_first_of("\"", p + 1);
+      auto cq = s.find_first_of('\"', p + 1);
 
       // No closing quote found. Error out.
       SMART_ASSERT(cq < s.size());
@@ -151,7 +152,7 @@ int count_tokens(const std::string &s, const char *delimiters)
   return 0;
 }
 
-int max_string_length(const std::vector<std::string> &names)
+int max_string_length(const NameList &names)
 {
   if (names.empty()) {
     return 0;
@@ -182,7 +183,7 @@ char first_character(const std::string &s)
   return 0;
 }
 
-int find_string(const std::vector<std::string> &lst, const std::string &s, bool nocase)
+int find_string(const NameList &lst, const std::string &s, bool nocase)
 {
   if (nocase) {
     for (unsigned i = 0; i < lst.size(); ++i) {

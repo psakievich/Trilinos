@@ -1,31 +1,15 @@
-// Copyright(C) 1999-2023 National Technology & Engineering Solutions
+// Copyright(C) 1999-2024 National Technology & Engineering Solutions
 // of Sandia, LLC (NTESS).  Under the terms of Contract DE-NA0003525 with
 // NTESS, the U.S. Government retains certain rights in this software.
 //
 // See packages/seacas/LICENSE for details
-
-#include <Ionit_Initializer.h>
-#include <Ioss_CodeTypes.h>
-#include <Ioss_DataPool.h>
-#include <Ioss_FileInfo.h>
-#include <Ioss_MemoryUtils.h>
-#include <Ioss_MeshType.h>
-#include <Ioss_ParallelUtils.h>
-#include <Ioss_ScopeGuard.h>
-#include <Ioss_SerializeIO.h>
-#include <Ioss_SubSystem.h>
-#include <Ioss_SurfaceSplit.h>
-#include <Ioss_Transform.h>
-#include <Ioss_Utils.h>
-#include <fmt/format.h>
-#include <transform/Iotr_Factory.h>
 
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <fstream>
+#include <fmt/format.h>
 #include <iomanip>
 #include <iostream>
 #include <pthread.h>
@@ -33,11 +17,21 @@
 #include <unistd.h>
 #include <vector>
 
-#include "shell_interface.h"
+#include "Ionit_Initializer.h"
+#include "Ioss_CodeTypes.h"
+#include "Ioss_DataPool.h"
+#include "Ioss_FileInfo.h"
+#include "Ioss_MemoryUtils.h"
+#include "Ioss_MeshType.h"
+#include "Ioss_ParallelUtils.h"
+#include "Ioss_ScopeGuard.h"
+#include "Ioss_SerializeIO.h"
+#include "Ioss_SubSystem.h"
+#include "Ioss_SurfaceSplit.h"
+#include "Ioss_Transform.h"
+#include "Ioss_Utils.h"
 
-#ifdef SEACAS_HAVE_KOKKOS
-#include <Kokkos_Core.hpp> // for Kokkos::View
-#endif
+#include "shell_interface.h"
 
 #define DO_OUTPUT                                                                                  \
   if (rank == 0)                                                                                   \
@@ -97,6 +91,22 @@ namespace {
 
   template <typename INT>
   void set_owned_node_count(Ioss::Region &region, int my_processor, INT dummy);
+
+  bool open_change_set(const std::string &cs_name, Ioss::Region &region, int my_rank)
+  {
+    bool success = true;
+    if (!cs_name.empty()) {
+      success = region.load_internal_change_set_mesh(cs_name);
+      if (!success) {
+        if (my_rank == 0) {
+          fmt::print(stderr, "ERROR: Unable to open change_set '{}' in file '{}'\n", cs_name,
+                     region.get_database()->get_filename());
+        }
+      }
+    }
+    return success;
+  }
+
 } // namespace
 // ========================================================================
 
@@ -194,11 +204,10 @@ int main(int argc, char *argv[])
 }
 
 namespace {
-  void file_copy(IOShell::Interface &interFace, int rank)
+  void file_copy(IOShell::Interface &interFace, int my_rank)
   {
     Ioss::PropertyManager properties = set_properties(interFace);
 
-    bool first = true;
     for (const auto &inpfile : interFace.inputFile) {
       Ioss::DatabaseIO *dbi =
           Ioss::IOFactory::create(interFace.inFiletype, inpfile, Ioss::READ_MODEL,
@@ -220,22 +229,22 @@ namespace {
         dbi->set_int_byte_size_api(Ioss::USE_INT64_API);
       }
 
-      if (!interFace.groupName.empty()) {
-        bool success = dbi->open_group(interFace.groupName);
+      // NOTE: 'region' owns 'db' pointer at this time...
+      Ioss::Region region(dbi, "region_1");
+
+      if (!interFace.changeSetName.empty()) {
+        bool success = open_change_set(interFace.changeSetName, region, my_rank);
         if (!success) {
-          if (rank == 0) {
+          if (my_rank == 0) {
             fmt::print(stderr, "ERROR: Unable to open group '{}' in file '{}'\n",
-                       interFace.groupName, inpfile);
+                       interFace.changeSetName, inpfile);
           }
           return;
         }
       }
 
-      // NOTE: 'region' owns 'db' pointer at this time...
-      Ioss::Region region(dbi, "region_1");
-
       if (region.mesh_type() != Ioss::MeshType::UNSTRUCTURED) {
-        if (rank == 0) {
+        if (my_rank == 0) {
           fmt::print(stderr,
                      "\nERROR: io_shell does not support '{}' meshes. Only 'Unstructured' mesh is "
                      "supported at this time.\n",
@@ -250,7 +259,7 @@ namespace {
         properties.add(Ioss::Property("MAXIMUM_NAME_LENGTH", max_name_length));
       }
 
-      // Get integer size being used on the input file and propgate
+      // Get integer size being used on the input file and propagate
       // to output file...
       int int_byte_size_api = dbi->int_byte_size_api();
       if (!properties.exists("INTEGER_SIZE_API")) {
@@ -285,15 +294,10 @@ namespace {
       if (interFace.inputFile.size() > 1) {
         properties.add(Ioss::Property("APPEND_OUTPUT", Ioss::DB_APPEND_GROUP));
 
-        if (!first) {
-          // Putting each file into its own output group...
-          // The name of the group will be the basename portion of the filename...
-          Ioss::FileInfo file(inpfile);
-          dbo->create_subgroup(file.tailname());
-        }
-        else {
-          first = false;
-        }
+        // Putting each file into its own output group...
+        // The name of the group will be the basename portion of the filename...
+        Ioss::FileInfo file(inpfile);
+        dbo->create_internal_change_set(file.tailname());
       }
 
       if (interFace.debug) {
@@ -317,9 +321,9 @@ namespace {
       // and output regions... (This is checked during nodeset output)
       if (output_region.get_database()->needs_shared_node_information()) {
         if (interFace.ints_64_bit)
-          set_owned_node_count(region, rank, (int64_t)0);
+          set_owned_node_count(region, my_rank, (int64_t)0);
         else
-          set_owned_node_count(region, rank, (int)0);
+          set_owned_node_count(region, my_rank, (int)0);
       }
 
       transfer_edgeblocks(region, output_region, interFace.debug);
@@ -642,12 +646,12 @@ namespace {
         if (inb->field_exists("owning_processor")) {
           size_t            isize = inb->get_field("ids").get_size();
           std::vector<char> data(isize);
-          inb->get_field_data("ids", data.data(), isize);
-          nb->put_field_data("ids", data.data(), isize);
+          inb->get_field_data("ids", Data(data), isize);
+          nb->put_field_data("ids", Data(data), isize);
           isize = inb->get_field("owning_processor").get_size();
           data.resize(isize);
-          inb->get_field_data("owning_processor", data.data(), isize);
-          nb->put_field_data("owning_processor", data.data(), isize);
+          inb->get_field_data("owning_processor", Data(data), isize);
+          nb->put_field_data("owning_processor", Data(data), isize);
         }
       }
     }
@@ -704,7 +708,7 @@ namespace {
       params[t].output_region = &output_region;
       params[t].interFace     = &interFace;
       params[t].role          = role;
-      pthread_create(&threads[t], nullptr, transfer_fields_ts, (void *)(params.data() + t));
+      pthread_create(&threads[t], nullptr, transfer_fields_ts, (void *)(Data(params) + t));
       t++;
     }
 
@@ -747,7 +751,7 @@ namespace {
       params[t].output_region = &output_region;
       params[t].interFace     = &interFace;
       params[t].role          = role;
-      pthread_create(&threads[t], nullptr, transfer_field_data_ts, (void *)(params.data() + t));
+      pthread_create(&threads[t], nullptr, transfer_field_data_ts, (void *)(Data(params) + t));
       t++;
     }
 
@@ -950,11 +954,11 @@ namespace {
         Ioss::Field tr_field(out_field_name, field.get_type(), field.raw_storage(),
                              field.get_role(), field.raw_count());
 
-        Ioss::Transform *transform = Iotr::Factory::create("vector magnitude");
+        auto *transform = Ioss::Transform::create("vector magnitude");
         assert(transform != nullptr);
         tr_field.add_transform(transform);
 
-        Ioss::Transform *max_transform = Iotr::Factory::create("absolute_maximum");
+        auto *max_transform = Ioss::Transform::create("absolute_maximum");
         assert(max_transform != nullptr);
         tr_field.add_transform(max_transform);
 
@@ -976,7 +980,9 @@ namespace {
 
       assert(oge->field_exists(out_field_name));
 
+#ifdef SEACAS_HAVE_KOKKOS
       int basic_type = ige->get_field(field_name).get_type();
+#endif
 
       size_t isize = ige->get_field(field_name).get_size();
       size_t osize = oge->get_field(out_field_name).get_size();
@@ -985,26 +991,7 @@ namespace {
       Ioss::DataPool pool;
       pool.data.resize(isize);
       switch (interFace.data_storage_type) {
-      case 1: ige->get_field_data(field_name, pool.data.data(), isize); break;
-      case 2:
-        if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
-          ige->get_field_data(field_name, pool.data.data(), isize);
-        }
-        else if ((basic_type == Ioss::Field::INTEGER) || (basic_type == Ioss::Field::INT32)) {
-          ige->get_field_data(field_name, pool.data_int);
-        }
-        else if (basic_type == Ioss::Field::INT64) {
-          ige->get_field_data(field_name, pool.data_int64);
-        }
-        else if (basic_type == Ioss::Field::REAL) {
-          ige->get_field_data(field_name, pool.data_double);
-        }
-        else if (basic_type == Ioss::Field::COMPLEX) {
-          ige->get_field_data(field_name, pool.data_complex);
-        }
-        else {
-        }
-        break;
+      case 1: ige->get_field_data(field_name, Data(pool.data), isize); break;
 #ifdef SEACAS_HAVE_KOKKOS
       case 3:
         if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
@@ -1021,7 +1008,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          ige->get_field_data(field_name, pool.data.data(), isize);
+          ige->get_field_data(field_name, Data(pool.data), isize);
         }
         else {
         }
@@ -1041,7 +1028,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          ige->get_field_data(field_name, pool.data.data(), isize);
+          ige->get_field_data(field_name, Data(pool.data), isize);
         }
         else {
         }
@@ -1065,7 +1052,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          ige->get_field_data(field_name, pool.data.data(), isize);
+          ige->get_field_data(field_name, Data(pool.data), isize);
         }
         else {
         }
@@ -1079,26 +1066,7 @@ namespace {
       }
 
       switch (interFace.data_storage_type) {
-      case 1: oge->put_field_data(out_field_name, pool.data.data(), osize); break;
-      case 2:
-        if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
-          oge->put_field_data(field_name, pool.data.data(), osize);
-        }
-        else if ((basic_type == Ioss::Field::INTEGER) || (basic_type == Ioss::Field::INT32)) {
-          oge->put_field_data(field_name, pool.data_int);
-        }
-        else if (basic_type == Ioss::Field::INT64) {
-          oge->put_field_data(field_name, pool.data_int64);
-        }
-        else if (basic_type == Ioss::Field::REAL) {
-          oge->put_field_data(field_name, pool.data_double);
-        }
-        else if (basic_type == Ioss::Field::COMPLEX) {
-          oge->put_field_data(field_name, pool.data_complex);
-        }
-        else {
-        }
-        break;
+      case 1: oge->put_field_data(out_field_name, Data(pool.data), osize); break;
 #ifdef SEACAS_HAVE_KOKKOS
       case 3:
         if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
@@ -1115,7 +1083,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          oge->put_field_data(out_field_name, pool.data.data(), osize);
+          oge->put_field_data(out_field_name, Data(pool.data), osize);
         }
         else {
         }
@@ -1135,7 +1103,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          oge->put_field_data(out_field_name, pool.data.data(), osize);
+          oge->put_field_data(out_field_name, Data(pool.data), osize);
         }
         else {
         }
@@ -1159,7 +1127,7 @@ namespace {
         }
         else if (basic_type == Ioss::Field::COMPLEX) {
           // Since data_view_complex cannot be a global variable.
-          oge->put_field_data(out_field_name, pool.data.data(), osize);
+          oge->put_field_data(out_field_name, Data(pool.data), osize);
         }
         else {
         }
@@ -1220,7 +1188,6 @@ namespace {
     if (isize != oge->get_field(field_name).get_size()) {
       assert(isize == oge->get_field(field_name).get_size());
     }
-    int basic_type = ige->get_field(field_name).get_type();
 
     if (field_name == "mesh_model_coordinates_x") {
       return;
@@ -1256,29 +1223,14 @@ namespace {
       return;
     }
 
+#ifdef SEACAS_HAVE_KOKKOS
+    int basic_type = ige->get_field(field_name).get_type();
+#endif
+
     Ioss::DataPool pool;
     pool.data.resize(isize);
     switch (interFace.data_storage_type) {
-    case 1: ige->get_field_data(field_name, pool.data.data(), isize); break;
-    case 2:
-      if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
-        ige->get_field_data(field_name, pool.data.data(), isize);
-      }
-      else if ((basic_type == Ioss::Field::INTEGER) || (basic_type == Ioss::Field::INT32)) {
-        ige->get_field_data(field_name, pool.data_int);
-      }
-      else if (basic_type == Ioss::Field::INT64) {
-        ige->get_field_data(field_name, pool.data_int64);
-      }
-      else if (basic_type == Ioss::Field::REAL) {
-        ige->get_field_data(field_name, pool.data_double);
-      }
-      else if (basic_type == Ioss::Field::COMPLEX) {
-        ige->get_field_data(field_name, pool.data_complex);
-      }
-      else {
-      }
-      break;
+    case 1: ige->get_field_data(field_name, Data(pool.data), isize); break;
 #ifdef SEACAS_HAVE_KOKKOS
     case 3:
       if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
@@ -1295,7 +1247,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        ige->get_field_data(field_name, pool.data.data(), isize);
+        ige->get_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1315,7 +1267,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        ige->get_field_data(field_name, pool.data.data(), isize);
+        ige->get_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1339,7 +1291,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        ige->get_field_data(field_name, pool.data.data(), isize);
+        ige->get_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1353,26 +1305,7 @@ namespace {
     }
 
     switch (interFace.data_storage_type) {
-    case 1: oge->put_field_data(field_name, pool.data.data(), isize); break;
-    case 2:
-      if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
-        oge->put_field_data(field_name, pool.data.data(), isize);
-      }
-      else if ((basic_type == Ioss::Field::INTEGER) || (basic_type == Ioss::Field::INT32)) {
-        oge->put_field_data(field_name, pool.data_int);
-      }
-      else if (basic_type == Ioss::Field::INT64) {
-        oge->put_field_data(field_name, pool.data_int64);
-      }
-      else if (basic_type == Ioss::Field::REAL) {
-        oge->put_field_data(field_name, pool.data_double);
-      }
-      else if (basic_type == Ioss::Field::COMPLEX) {
-        oge->put_field_data(field_name, pool.data_complex);
-      }
-      else {
-      }
-      break;
+    case 1: oge->put_field_data(field_name, Data(pool.data), isize); break;
 #ifdef SEACAS_HAVE_KOKKOS
     case 3:
       if ((basic_type == Ioss::Field::CHARACTER) || (basic_type == Ioss::Field::STRING)) {
@@ -1389,7 +1322,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        oge->put_field_data(field_name, pool.data.data(), isize);
+        oge->put_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1409,7 +1342,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        oge->put_field_data(field_name, pool.data.data(), isize);
+        oge->put_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1433,7 +1366,7 @@ namespace {
       }
       else if (basic_type == Ioss::Field::COMPLEX) {
         // Since data_view_complex cannot be a global variable.
-        oge->put_field_data(field_name, pool.data.data(), isize);
+        oge->put_field_data(field_name, Data(pool.data), isize);
       }
       else {
       }
@@ -1448,7 +1381,7 @@ namespace {
   {
     out.add_information_records(in.get_information_records());
 
-    const std::vector<std::string> &qa = in.get_qa_records();
+    const Ioss::NameList &qa = in.get_qa_records();
     for (size_t i = 0; i < qa.size(); i += 4) {
       out.add_qa_record(qa[i + 0], qa[i + 1], qa[i + 2], qa[i + 3]);
     }

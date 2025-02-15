@@ -75,18 +75,6 @@ void do_final_sync_to_device(const std::vector<NgpField<T>*>& ngpFields)
   }
 }
 
-#ifndef STK_HIDE_DEPRECATED_CODE //delete after Aug 2023
-template <typename T>
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use copy_owned_to_shared(bulk, ngpFields, doFinalSyncBackToDevice).")
-void copy_owned_to_shared(const stk::mesh::BulkData & bulk,
-                          const std::vector<stk::mesh::NgpField<T> *> & ngpFields,
-                          bool doFinalSyncBackToDevice,
-                          bool syncOnlySharedOrGhosted)
-{
-  copy_owned_to_shared(bulk, ngpFields, doFinalSyncBackToDevice);
-}
-#endif
-
 template <typename T>
 void copy_owned_to_shared(const stk::mesh::BulkData & bulk,
                           const std::vector<stk::mesh::NgpField<T> *> & ngpFields,
@@ -107,18 +95,6 @@ void copy_owned_to_shared(const stk::mesh::BulkData & bulk,
   }
 }
 
-#ifndef STK_HIDE_DEPRECATED_CODE //delete after Aug 2023
-template <typename T>
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use communicate_field_data(ghosts, ngpFields, doFinalSyncBackToDevice).")
-void communicate_field_data(const stk::mesh::Ghosting & ghosting,
-                            const std::vector<stk::mesh::NgpField<T> *> & ngpFields,
-                            bool doFinalSyncBackToDevice,
-                            bool syncOnlySharedOrGhosted)
-{
-  communicate_field_data(ghosting, ngpFields, doFinalSyncBackToDevice);
-}
-#endif
-
 template <typename T>
 void communicate_field_data(const stk::mesh::Ghosting & ghosting,
                             const std::vector<stk::mesh::NgpField<T> *> & ngpFields,
@@ -138,18 +114,6 @@ void communicate_field_data(const stk::mesh::Ghosting & ghosting,
     do_final_sync_to_device(ngpFields);
   }
 }
-
-#ifndef STK_HIDE_DEPRECATED_CODE //delete after Aug 2023
-template <typename T>
-STK_DEPRECATED_MSG("Unnecessary sync argument removed. Use communicate_field_data(bulk, ngpFields, doFinalSyncBackToDevice).")
-void communicate_field_data(const stk::mesh::BulkData & bulk,
-                            const std::vector<stk::mesh::NgpField<T> *> & ngpFields,
-                            bool doFinalSyncBackToDevice,
-                            bool syncOnlySharedOrGhosted)
-{
-  communicate_field_data(bulk, ngpFields, doFinalSyncBackToDevice);
-}
-#endif
 
 template <typename T>
 void communicate_field_data(const stk::mesh::BulkData & bulk,
@@ -223,12 +187,11 @@ public:
     for (stk::mesh::NgpField<T>* field : m_ngpFields)
     {
       stk::mesh::FieldBase* stkField = m_ngpMesh.get_bulk_on_host().mesh_meta_data().get_fields()[field->get_ordinal()];
-      const stk::mesh::BucketIndices & stkBktIndices = m_ngpMesh.get_bulk_on_host().volatile_fast_shared_comm_map(field->get_rank())[proc];
-      for (size_t i = 0; i < stkBktIndices.bucket_info.size(); ++i) {
-        const unsigned bucketId = stkBktIndices.bucket_info[i].bucket_id;
-        const unsigned numEntitiesThisBucket = stkBktIndices.bucket_info[i].num_entities_this_bucket;
+      stk::mesh::HostCommMapIndices  commMapIndices = m_ngpMesh.get_bulk_on_host().volatile_fast_shared_comm_map<stk::ngp::MemSpace>(field->get_rank(), proc);
+      for (size_t i = 0; i < commMapIndices.extent(0); ++i) {
+        const unsigned bucketId = commMapIndices(i).bucket_id;
         const unsigned numScalarsPerEntity = stk::mesh::field_scalars_per_entity(*stkField, bucketId);
-        numValues += numScalarsPerEntity * numEntitiesThisBucket;
+        numValues += numScalarsPerEntity;
       }
     }
   }
@@ -297,7 +260,7 @@ void parallel_sum_device_mpi(const stk::mesh::NgpMesh& ngpMesh, const std::vecto
   }
 
   const bool deterministic = false;
-  stk::mesh::ngp_parallel_data_exchange_sym_pack_unpack<double>(MPI_COMM_WORLD,
+  stk::mesh::ngp_parallel_data_exchange_sym_pack_unpack<double>(bulk.parallel(),
                                                                 comm_procs,
                                                                 exchangeHandler,
                                                                 deterministic);

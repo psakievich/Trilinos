@@ -1,44 +1,11 @@
-/*@HEADER
-// ***********************************************************************
-//
+// @HEADER
+// *****************************************************************************
 //       Ifpack2: Templated Object-Oriented Algebraic Preconditioner Package
-//                 Copyright (2009) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact Michael A. Heroux (maherou@sandia.gov)
-//
-// ***********************************************************************
-//@HEADER
-*/
+// Copyright 2009 NTESS and the Ifpack2 contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
 
 #ifndef IFPACK2_LOCALSPARSETRIANGULARSOLVER_DECL_HPP
 #define IFPACK2_LOCALSPARSETRIANGULARSOLVER_DECL_HPP
@@ -340,6 +307,16 @@ public:
   /// then compute(), before you may call apply().
   virtual void setMatrix (const Teuchos::RCP<const row_matrix_type>& A);
 
+  /// \brief Set this triangular solver's stream information.
+  ///
+  void setStreamInfo (const bool& isKokkosKernelsStream, const int& num_streams, const std::vector<HandleExecSpace>& exec_space_instances);
+
+  /// \brief Set this preconditioner's matrices (used by stream interface of triangular solve).
+  ///
+  /// After calling this method, you must call first initialize(),
+  /// then compute(), before you may call apply().
+  void setMatrices (const std::vector< Teuchos::RCP<crs_matrix_type> >& A_crs_v);
+
   //@}
 
 private:
@@ -349,6 +326,7 @@ private:
   Teuchos::RCP<Teuchos::FancyOStream> out_;
   //! The original input matrix, as a Tpetra::CrsMatrix.
   Teuchos::RCP<const crs_matrix_type> A_crs_;
+  std::vector< Teuchos::RCP<crs_matrix_type> > A_crs_v_;
 
   typedef Tpetra::MultiVector<scalar_type, local_ordinal_type, global_ordinal_type, node_type> MV;
   mutable Teuchos::RCP<MV> X_colMap_;
@@ -383,6 +361,11 @@ private:
   //! Optional KokkosKernels implementation.
   bool isKokkosKernelsSptrsv_;
   Teuchos::RCP<k_handle> kh_;
+  std::vector< Teuchos::RCP<k_handle> > kh_v_;
+  int num_streams_;
+  bool isKokkosKernelsStream_;
+  bool kh_v_nonnull_;
+  std::vector<HandleExecSpace> exec_space_instances_;
 
   /// \brief "L" if the matrix is locally lower triangular, "U" if the
   ///   matrix is locally upper triangular, or "N" if unknown or
@@ -424,6 +407,8 @@ private:
                         const Teuchos::ETransp mode) const;
 
   void initializeState();
+
+  KokkosSparse::Experimental::SPTRSVAlgorithm kokkosKernelsAlgorithm() const;
 };
 
 } // namespace Ifpack2

@@ -45,7 +45,7 @@
 #include <stk_mesh/base/CreateFaces.hpp>
 #include <stk_mesh/base/SkinMesh.hpp>
 #include <stk_mesh/baseImpl/elementGraph/BulkDataIdMapper.hpp>
-#include <stk_util/environment/Env.hpp>
+#include <stk_util/parallel/OutputStreams.hpp>
 
 #include <Teuchos_ParameterList.hpp>
 #include <stk_balance/internal/StkMeshAdapterForZoltan2.hpp>
@@ -106,8 +106,8 @@ bool should_omit_spider_element(const stk::mesh::BulkData & stkMeshBulkData,
                                 const stk::balance::BalanceSettings & balanceSettings,
                                 stk::mesh::Entity elem);
 
-void register_internal_fields(stk::mesh::BulkData & bulk, const stk::balance::BalanceSettings & balanceSettings);
-void fill_spider_connectivity_count_fields(const stk::mesh::BulkData & bulk, const BalanceSettings & balanceSettings);
+void register_internal_fields_and_parts(stk::mesh::BulkData & bulk, const stk::balance::BalanceSettings & balanceSettings);
+void fill_spider_connectivity_count_fields_and_parts(stk::mesh::BulkData & bulk, const BalanceSettings & balanceSettings);
 void fill_output_subdomain_field(const stk::mesh::BulkData & bulk, const BalanceSettings & balanceSettings,
                                  stk::mesh::EntityProcVec & decomp);
 void fix_spider_elements(const BalanceSettings & balanceSettings, stk::mesh::BulkData & stkMeshBulkData,
@@ -140,14 +140,11 @@ void print_zoltan_statistics(const ZoltanAdapter& stkMeshAdapter, Zoltan2::Evalu
   double localsum = 0.;
   for (size_t i = 0; i< stkMeshAdapter.getLocalNumIDs(); i++) localsum += kdd[i];
 
-  sierra::Env::outputP0() << parallel_rank
+  stk::outputP0() << parallel_rank
                           << " PRINTING METRICS nObj " << stkMeshAdapter.getLocalNumIDs()
                           << " nwgts " << stkMeshAdapter.getNumWeightsPerID()
                           << " sumwgt " << localsum << std::endl;
-  zoltanEvaluateParition.printMetrics(sierra::Env::outputP0());
-  //sierra::Env::outputP0() << parallel_rank
-  //        << " PRINTING GRAPH METRICS" << std::endl;
-  //zoltanEvaluateParition.printGraphMetrics(sierra::Env::outputP0());
+  zoltanEvaluateParition.printMetrics(stk::outputP0());
 }
 
 template <class ZoltanAdapter>
