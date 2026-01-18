@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_06.cpp
@@ -53,7 +19,7 @@
 #include "ROL_Objective_SimOpt.hpp"
 #include "ROL_TeuchosBatchManager.hpp"
 
-#include "Teuchos_LAPACK.hpp"
+#include "ROL_LAPACK.hpp"
 
 template<class Real>
 class L2VectorPrimal;
@@ -113,7 +79,7 @@ private:
     else {
       u.assign(r.begin(),r.end());
       // Perform LDL factorization
-      Teuchos::LAPACK<int,Real> lp;
+      ROL::LAPACK<int,Real> lp;
       std::vector<Real> du2(r.size()-2,0.0);
       std::vector<int> ipiv(r.size(),0);
       int info;
@@ -1115,7 +1081,7 @@ public:
     projection(*ex);
   }
 
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1126,7 +1092,7 @@ public:
     }
   }
 
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1137,7 +1103,7 @@ public:
     }
   }
 
-  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1149,38 +1115,38 @@ public:
     }
   }
 
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > 0.0) ) {
+      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > geps) ) {
         (*ev)[i] = 0.0;
       }
     }
   }
 
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < 0.0) ) {
+      if ( ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < -geps) ) {
         (*ev)[i] = 0.0;
       }
     }
   }
 
-  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > 0.0) ||
-           ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < 0.0) ) {
+      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > geps) ||
+           ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < -geps) ) {
         (*ev)[i] = 0.0;
       }
     }
@@ -1280,7 +1246,7 @@ public:
     projection(*ex);
   }
 
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1291,7 +1257,7 @@ public:
     }
   }
 
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1302,7 +1268,7 @@ public:
     }
   }
 
-  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
     Real epsn = std::min(scale_*eps,min_diff_);
@@ -1314,38 +1280,38 @@ public:
     }
   }
 
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > 0.0) ) {
+      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > geps) ) {
         (*ev)[i] = 0.0;
       }
     }
   }
 
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < 0.0) ) {
+      if ( ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < -geps) ) {
         (*ev)[i] = 0.0;
       }
     }
   }
 
-  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex; cast_const_vector(ex,x);
     ROL::Ptr<const std::vector<Real> > eg; cast_const_vector(eg,g);
     ROL::Ptr<std::vector<Real> > ev; cast_vector(ev,v);
-    Real epsn = std::min(scale_*eps,min_diff_);
+    Real epsn = std::min(scale_*xeps,min_diff_);
     for ( int i = 0; i < dim_; i++ ) {
-      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > 0.0) ||
-           ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < 0.0) ) {
+      if ( ((*ex)[i] <= x_lo_[i]+epsn && (*eg)[i] > geps) ||
+           ((*ex)[i] >= x_up_[i]-epsn && (*eg)[i] < -geps) ) {
         (*ev)[i] = 0.0;
       }
     }
@@ -1374,7 +1340,7 @@ private:
   }
 
 public:
-  L2VectorBatchManager(const ROL::Ptr<const Teuchos::Comm<Ordinal> > &comm)
+  L2VectorBatchManager(const ROL::Ptr<const Teuchos::Comm<int> > &comm)
     : ROL::TeuchosBatchManager<Real,Ordinal>(comm) {}
   void sumAll(ROL::Vector<Real> &input, ROL::Vector<Real> &output) {
     ROL::Ptr<std::vector<Real> > input_ptr;
@@ -1407,7 +1373,7 @@ private:
   }
 
 public:
-  H1VectorBatchManager(const ROL::Ptr<const Teuchos::Comm<Ordinal> > &comm)
+  H1VectorBatchManager(const ROL::Ptr<const Teuchos::Comm<int> > &comm)
     : ROL::TeuchosBatchManager<Real,Ordinal>(comm) {}
   void sumAll(ROL::Vector<Real> &input, ROL::Vector<Real> &output) {
     ROL::Ptr<std::vector<Real> > input_ptr;

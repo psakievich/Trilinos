@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_PDEOPT_PDEVECTOR_HPP
@@ -138,7 +104,7 @@ class PDE_PrimalSimVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       #endif
       useRiesz_       = parlist.sublist("Vector").sublist("Sim").get("Use Riesz Map", false);
       useLumpedRiesz_ = parlist.sublist("Vector").sublist("Sim").get("Lump Riesz Map", false);
-      assembler->assemblePDERieszMap1(RieszMap_, pde);
+      if (useRiesz_) assembler->assemblePDERieszMap1(RieszMap_, pde);
       useRiesz_ = useRiesz_ && (RieszMap_ != ROL::nullPtr);
       if (useRiesz_) {
         if (useLumpedRiesz_) {
@@ -168,7 +134,7 @@ class PDE_PrimalSimVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       #endif
       useRiesz_       = parlist.sublist("Vector").sublist("Sim").get("Use Riesz Map", false);
       useLumpedRiesz_ = parlist.sublist("Vector").sublist("Sim").get("Lump Riesz Map", false);
-      assembler.assembleDynPDERieszMap1(RieszMap_, pde);
+      if (useRiesz_) assembler.assembleDynPDERieszMap1(RieszMap_, pde);
       useRiesz_ = useRiesz_ && (RieszMap_ != ROL::nullPtr);
       if (useRiesz_) {
         if (useLumpedRiesz_) {
@@ -243,6 +209,11 @@ class PDE_PrimalSimVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       applyRiesz(dual_vec_->getVector(),ROL::TpetraMultiVector<Real,LO,GO,Node>::getVector());
       return *dual_vec_;
     }
+
+    Real apply(const ROL::Vector<Real> &x) const {
+      const PDE_DualSimVector<Real,LO,GO,Node> &ex = dynamic_cast<const PDE_DualSimVector<Real,LO,GO,Node>&>(x);
+      return ROL::TpetraMultiVector<Real,LO,GO,Node>::dot(ex);
+    }
 }; // class PDE_PrimalSimVector
 
 template <class Real, class LO, class GO, class Node>
@@ -309,7 +280,7 @@ class PDE_DualSimVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       #endif
       useRiesz_       = parlist.sublist("Vector").sublist("Sim").get("Use Riesz Map", false);
       useLumpedRiesz_ = parlist.sublist("Vector").sublist("Sim").get("Lump Riesz Map", false);
-      assembler->assemblePDERieszMap1(RieszMap_, pde);
+      if (useRiesz_) assembler->assemblePDERieszMap1(RieszMap_, pde);
       useRiesz_ = useRiesz_ && (RieszMap_ != ROL::nullPtr);
       if (useRiesz_) {
         if (useLumpedRiesz_) {
@@ -419,6 +390,11 @@ class PDE_DualSimVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       applyRiesz(primal_vec_->getVector(),ROL::TpetraMultiVector<Real,LO,GO,Node>::getVector());
       return *primal_vec_;
     }
+
+    Real apply(const ROL::Vector<Real> &x) const {
+      const PDE_PrimalSimVector<Real,LO,GO,Node> &ex = dynamic_cast<const PDE_PrimalSimVector<Real,LO,GO,Node>&>(x);
+      return ROL::TpetraMultiVector<Real,LO,GO,Node>::dot(ex);
+    }
 }; // class PDE_DualSimVector
 
 template <class Real,
@@ -491,7 +467,7 @@ class PDE_PrimalOptVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       #endif
       useRiesz_       = parlist.sublist("Vector").sublist("Opt").get("Use Riesz Map", false);
       useLumpedRiesz_ = parlist.sublist("Vector").sublist("Opt").get("Lump Riesz Map", false);
-      assembler->assemblePDERieszMap2(RieszMap_, pde);
+      if (useRiesz_) assembler->assemblePDERieszMap2(RieszMap_, pde);
       useRiesz_ = useRiesz_ && (RieszMap_ != ROL::nullPtr);
       if (useRiesz_) {
         if (useLumpedRiesz_) {
@@ -596,6 +572,11 @@ class PDE_PrimalOptVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       applyRiesz(dual_vec_->getVector(),ROL::TpetraMultiVector<Real,LO,GO,Node>::getVector());
       return *dual_vec_;
     }
+
+    Real apply(const ROL::Vector<Real> &x) const {
+      const PDE_DualOptVector<Real,LO,GO,Node> &ex = dynamic_cast<const PDE_DualOptVector<Real,LO,GO,Node>&>(x);
+      return ROL::TpetraMultiVector<Real,LO,GO,Node>::dot(ex);
+    }
 }; // class PDE_PrimalOptVector
 
 template <class Real, class LO, class GO, class Node>
@@ -662,7 +643,7 @@ class PDE_DualOptVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       #endif
       useRiesz_       = parlist.sublist("Vector").sublist("Opt").get("Use Riesz Map", false);
       useLumpedRiesz_ = parlist.sublist("Vector").sublist("Opt").get("Lump Riesz Map", false);
-      assembler->assemblePDERieszMap2(RieszMap_, pde);
+      if (useRiesz_) assembler->assemblePDERieszMap2(RieszMap_, pde);
       useRiesz_ = useRiesz_ && (RieszMap_ != ROL::nullPtr);
       if (useRiesz_) {
         if (useLumpedRiesz_) {
@@ -772,6 +753,11 @@ class PDE_DualOptVector : public ROL::TpetraMultiVector<Real,LO,GO,Node> {
       applyRiesz(primal_vec_->getVector(),ROL::TpetraMultiVector<Real,LO,GO,Node>::getVector());
       return *primal_vec_;
     }
+
+    Real apply(const ROL::Vector<Real> &x) const {
+      const PDE_PrimalOptVector<Real,LO,GO,Node> &ex = dynamic_cast<const PDE_PrimalOptVector<Real,LO,GO,Node>&>(x);
+      return ROL::TpetraMultiVector<Real,LO,GO,Node>::dot(ex);
+    }
 }; // class PDE_DualOptVector
 
 template <class Real,
@@ -782,6 +768,7 @@ class PDE_OptVector : public ROL::Vector<Real> {
 private:
   ROL::Ptr<ROL::TpetraMultiVector<Real,LO,GO,Node> > vec1_;
   ROL::Ptr<ROL::StdVector<Real> >                    vec2_;
+  const int rank_;
   mutable ROL::Ptr<ROL::TpetraMultiVector<Real,LO,GO,Node> > dual_vec1_;
   mutable ROL::Ptr<ROL::StdVector<Real> >                    dual_vec2_;
   mutable ROL::Ptr<PDE_OptVector<Real,LO,GO,Node> >          dual_vec_;
@@ -789,20 +776,22 @@ private:
 
 public:
   PDE_OptVector(const ROL::Ptr<ROL::TpetraMultiVector<Real,LO,GO,Node> > &vec1,
-                const ROL::Ptr<ROL::StdVector<Real> >                    &vec2 ) 
-    : vec1_(vec1), vec2_(vec2), isDualInitialized_(false) {
+                const ROL::Ptr<ROL::StdVector<Real> >                    &vec2,
+                const int rank = 0 ) 
+    : vec1_(vec1), vec2_(vec2), rank_(rank), isDualInitialized_(false) {
 
     dual_vec1_ = ROL::dynamicPtrCast<ROL::TpetraMultiVector<Real,LO,GO,Node> >(vec1_->dual().clone());
     dual_vec2_ = ROL::dynamicPtrCast<ROL::StdVector<Real> >(vec2_->dual().clone());
   }
 
   PDE_OptVector(const ROL::Ptr<ROL::TpetraMultiVector<Real,LO,GO,Node> > &vec)
-    : vec1_(vec), vec2_(ROL::nullPtr), dual_vec2_(ROL::nullPtr), isDualInitialized_(false) {
+    : vec1_(vec), vec2_(ROL::nullPtr), rank_(0), dual_vec2_(ROL::nullPtr), isDualInitialized_(false) {
     dual_vec1_ = ROL::dynamicPtrCast<ROL::TpetraMultiVector<Real,LO,GO,Node> >(vec1_->dual().clone());
   }
 
-  PDE_OptVector(const ROL::Ptr<ROL::StdVector<Real> > &vec)
-    : vec1_(ROL::nullPtr), vec2_(vec), dual_vec1_(ROL::nullPtr), isDualInitialized_(false) {
+  PDE_OptVector(const ROL::Ptr<ROL::StdVector<Real> > &vec,
+                const int rank = 0)
+    : vec1_(ROL::nullPtr), vec2_(vec), rank_(rank), dual_vec1_(ROL::nullPtr), isDualInitialized_(false) {
     dual_vec2_ = ROL::dynamicPtrCast<ROL::StdVector<Real> >(vec2_->dual().clone());
   }
 
@@ -906,6 +895,14 @@ public:
     return *dual_vec_;
   }
 
+  Real apply(const ROL::Vector<Real> &x) const {
+    const PDE_OptVector<Real> &xs = dynamic_cast<const PDE_OptVector<Real>&>(x);
+    Real val(0);
+    if ( vec1_ != ROL::nullPtr ) val += vec1_->apply(*(xs.getField()));
+    if ( vec2_ != ROL::nullPtr ) val += vec2_->apply(*(xs.getParameter()));
+    return val;
+  }
+
   ROL::Ptr<ROL::Vector<Real> > basis( const int i )  const {
     ROL::Ptr<ROL::Vector<Real> > e;
     if ( vec1_ != ROL::nullPtr && vec2_ != ROL::nullPtr ) {
@@ -930,7 +927,7 @@ public:
         e1 = vec1_->basis(i);
       }
       else {
-        e1->zero();
+        e1 = vec1_->clone(); e1->zero();
       }
       e = ROL::makePtr<PDE_OptVector>(
         ROL::dynamicPtrCast<ROL::TpetraMultiVector<Real> >(e1));
@@ -942,7 +939,7 @@ public:
         e2 = vec2_->basis(i);
       }
       else {
-        e2->zero();
+        e2 = vec2_->clone(); e2->zero();
       }
       e = ROL::makePtr<PDE_OptVector>(
         ROL::dynamicPtrCast<ROL::StdVector<Real> >(e2));
@@ -1005,7 +1002,9 @@ public:
       vec1_->print(outStream);
     }
     if (vec2_ != ROL::nullPtr) {
-      vec2_->print(outStream);
+      if (rank_ == 0) {
+        vec2_->print(outStream);
+      }
     }
   }
 

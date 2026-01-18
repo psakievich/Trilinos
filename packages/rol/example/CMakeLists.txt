@@ -18,13 +18,17 @@ ADD_SUBDIRECTORY(complex)
 ADD_SUBDIRECTORY(binary-design)
 ADD_SUBDIRECTORY(paraboloid-circle)
 ADD_SUBDIRECTORY(putting)
-ADD_SUBDIRECTORY(PinT)
 ADD_SUBDIRECTORY(dense-hessian)
+ADD_SUBDIRECTORY(stream-buffer)
+ADD_SUBDIRECTORY(oed)
+ADD_SUBDIRECTORY(lincon-test)
 
+IF(NOT STANDALONE_ROL)
 
 IF(${PACKAGE_NAME}_ENABLE_Sacado)
 ADD_SUBDIRECTORY(sacado)
 ENDIF()
+
 
 # Examples which require use of Teuchos
 GET_PROPERTY( PTR_STRING GLOBAL PROPERTY PTR_IMPL )
@@ -36,6 +40,7 @@ IF( ${USING_TEUCHOS_ALL} )
 
 MESSAGE("-- Enabling ROL examples with required dependency on Teuchos::RCP or Teuchos::ParameterList")
 
+ADD_SUBDIRECTORY(PinT)
 ADD_SUBDIRECTORY(burgers-control)
 ADD_SUBDIRECTORY(parabolic-control)
 ADD_SUBDIRECTORY(poisson-control)
@@ -46,10 +51,15 @@ IF(${PROJECT_NAME}_ENABLE_Tempus)
   ADD_SUBDIRECTORY(tempus)
 ENDIF()
 
+IF( ${CMAKE_CXX_STANDARD} GREATER_EQUAL 17 )
+  ADD_SUBDIRECTORY(l1-penalty)
+ELSE()
+  MESSAGE("Skipping l1-penalty, which requires C++17")
+ENDIF()
+
 ENDIF( ${USING_TEUCHOS_ALL} )
 
 #ENDIF()
 #ENDIF()
 
-
-
+ENDIF()

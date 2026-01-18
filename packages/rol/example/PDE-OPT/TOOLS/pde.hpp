@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  pde.hpp
@@ -95,6 +61,38 @@ public:
                           const ROL::Ptr<const Intrepid::FieldContainer<Real> > & z_coeff = ROL::nullPtr,
                           const ROL::Ptr<const std::vector<Real> > & z_param = ROL::nullPtr) {
     throw Exception::NotImplemented(">>> Jacobian_3 not implemented.");
+  }
+
+  virtual void applyJacobian_1(ROL::Ptr<Intrepid::FieldContainer<Real>> &jv,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff,
+                               const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyJacobian_1 not implemented.");
+  }
+
+  virtual void applyAdjointJacobian_1(ROL::Ptr<Intrepid::FieldContainer<Real>> &jv,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & v_coeff,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff,
+                                      const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyAdjointJacobian_1 not implemented.");
+  }
+
+  virtual void applyJacobian_2(ROL::Ptr<Intrepid::FieldContainer<Real>> &jv,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff,
+                               const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyJacobian_2 not implemented.");
+  }
+
+  virtual void applyAdjointJacobian_2(ROL::Ptr<Intrepid::FieldContainer<Real>> &jv,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & v_coeff,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                                      const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff,
+                                      const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyAdjointJacobian_2 not implemented.");
   }
 
   virtual void Hessian_11(ROL::Ptr<Intrepid::FieldContainer<Real> > & hess,
@@ -169,22 +167,74 @@ public:
     throw Exception::NotImplemented(">>> Hessian_33 not implemented.");
   }
 
-  virtual void RieszMap_1(ROL::Ptr<Intrepid::FieldContainer<Real> > &riesz) {
+  virtual void applyHessian_11(ROL::Ptr<Intrepid::FieldContainer<Real> > & hess,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & l_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & z_coeff = ROL::nullPtr,
+                               const ROL::Ptr<const std::vector<Real> > & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyHessian_11 not implemented.");
+  }
+
+  virtual void applyHessian_12(ROL::Ptr<Intrepid::FieldContainer<Real> > & hess,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & l_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & z_coeff = ROL::nullPtr,
+                               const ROL::Ptr<const std::vector<Real> > & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyHessian_12 not implemented.");
+  }
+
+  virtual void applyHessian_21(ROL::Ptr<Intrepid::FieldContainer<Real> > & hess,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & l_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & z_coeff = ROL::nullPtr,
+                               const ROL::Ptr<const std::vector<Real> > & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyHessian_21 not implemented.");
+  }
+
+  virtual void applyHessian_22(ROL::Ptr<Intrepid::FieldContainer<Real> > & hess,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & v_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & l_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & u_coeff,
+                               const ROL::Ptr<const Intrepid::FieldContainer<Real> > & z_coeff = ROL::nullPtr,
+                               const ROL::Ptr<const std::vector<Real> > & z_param = ROL::nullPtr) {
+    throw Exception::NotImplemented(">>> applyHessian_22 not implemented.");
+  }
+
+  virtual void RieszMap_1(ROL::Ptr<Intrepid::FieldContainer<Real>> &riesz) {
     throw Exception::NotImplemented(">>> RieszMap_1 not implemented.");
   }
 
-  virtual void RieszMap_2(ROL::Ptr<Intrepid::FieldContainer<Real> > &riesz) {
+  virtual void RieszMap_2(ROL::Ptr<Intrepid::FieldContainer<Real>> &riesz) {
     throw Exception::NotImplemented(">>> RieszMap_2 not implemented.");
   }
 
-  virtual std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real> > > > getFields() = 0;
-
-  virtual void setCellNodes(const ROL::Ptr<Intrepid::FieldContainer<Real> > &cellNodes,
-                            const std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real> > > > &bdryCellNodes,
-                            const std::vector<std::vector<std::vector<int> > > &bdryCellLocIds) = 0;
-
-  virtual void setFieldPattern(const std::vector<std::vector<int> > & fieldPattern) {
+  virtual std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> getFields() = 0;
+  virtual std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> getFields2() {
+    return getFields();
   }
+
+  virtual void setCellNodes(const ROL::Ptr<Intrepid::FieldContainer<Real>> &cellNodes,
+                            const std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>> &bdryCellNodes,
+                            const std::vector<std::vector<std::vector<int>>> &bdryCellLocIds) = 0;
+
+  virtual void setFieldPattern(const std::vector<std::vector<int>> &fieldPattern) {}
+  virtual void setFieldPattern(const std::vector<std::vector<int>> &fieldPattern1,
+                               const std::vector<std::vector<int>> &fieldPattern2) {
+    setFieldPattern(fieldPattern1);
+  }
+
+  virtual void printData(std::string tag,
+                         const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                         const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff = ROL::nullPtr,
+                         const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {}
+
+  virtual void printCellAverages(std::string tag,
+                                 const ROL::Ptr<const Intrepid::FieldContainer<Real>> & u_coeff,
+                                 const ROL::Ptr<const Intrepid::FieldContainer<Real>> & z_coeff = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr) {}
 
 private:
   Real time_;

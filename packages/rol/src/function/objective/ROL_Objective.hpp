@@ -1,50 +1,17 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_OBJECTIVE_H
 #define ROL_OBJECTIVE_H
 
 #include "ROL_Vector.hpp"
+#include "ROL_UpdateType.hpp"
 #include "ROL_Types.hpp"
 #include <iostream>
 
@@ -73,11 +40,30 @@
 
 namespace ROL {
 
-template <class Real>
+template<typename Real>
 class Objective {
+private:
+  // Vector storage used for FD approximations (default are null pointers)
+  Ptr<Vector<Real>> prim_, dual_, basis_;
+
 public:
 
   virtual ~Objective() {}
+
+  Objective() : prim_(nullPtr), dual_(nullPtr), basis_(nullPtr) {}
+
+  /** \brief Update objective function. 
+
+      This function updates the objective function at new iterations. 
+      @param[in]          x      is the new iterate. 
+      @param[in]          type   is the type of update requested.
+      @param[in]          iter   is the outer algorithm iterations count.
+  */
+  virtual void update( const Vector<Real> &x, UpdateType type, int iter = -1 ) {
+    ROL_UNUSED(x);
+    ROL_UNUSED(type);
+    ROL_UNUSED(iter);
+  }
 
   /** \brief Update objective function. 
 
@@ -166,6 +152,35 @@ public:
     Pv.set(v.dual());
   }
 
+  /** \brief Compute the proximity operator.
+
+      This function returns the proximity operator.
+      @param[out]         Pv  is the proximity operator applied to \f$v\f$ (primal optimization vector).
+      @param[in]          v   is the input to the proximity operator (primal optimization vector).
+      @param[in]          t   is the proximity operator parameter (positive scalar).
+      @param[in]          tol is a tolerance for inexact objective function computation.
+  */
+  virtual void prox( Vector<Real> &Pv, const Vector<Real> &v, Real t, Real &tol){
+    ROL_UNUSED(Pv);
+    ROL_UNUSED(v);
+    ROL_UNUSED(t);
+    ROL_UNUSED(tol);
+    ROL_TEST_FOR_EXCEPTION(true, std::invalid_argument,
+      ">>> ERROR (ROL::Objective): prox not implemented!"); 
+  }
+
+
+  /** \brief Apply the Jacobian of the proximity operator.
+
+      This function applies the Jacobian of the proximity operator.
+      @param[out]         Jv  is the Jacobian of the proximity operator at \f$x\f$ applied to \f$v\f$ (primal optimization vector).
+      @param[in]          v   is the direction vector (primal optimization vector).
+      @param[in]          x   is the input to the proximity operator (primal optimization vector).
+      @param[in]          t   is the proximity operator parameter (positive scalar).
+      @param[in]          tol is a tolerance for inexact objective function computation.
+  */
+  virtual void proxJacVec( Vector<Real> &Jv, const Vector<Real> &v, const Vector<Real> &x, Real t, Real &tol);
+
   /** \brief Finite-difference gradient check.
 
       This function computes a sequence of one-sided finite-difference checks for the gradient.  
@@ -186,12 +201,12 @@ public:
       @param[in]      numSteps      is a parameter which dictates the number of finite difference steps.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkGradient( const Vector<Real> &x,
-                                                         const Vector<Real> &d,
-                                                         const bool printToStream = true,
-                                                         std::ostream & outStream = std::cout,
-                                                         const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
-                                                         const int order = 1 ) {
+  virtual std::vector<std::vector<Real>> checkGradient( const Vector<Real> &x,
+                                                        const Vector<Real> &d,
+                                                        const bool printToStream = true,
+                                                        std::ostream & outStream = std::cout,
+                                                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                                                        const int order = 1 ) {
     return checkGradient(x, x.dual(), d, printToStream, outStream, numSteps, order);
   }
 
@@ -217,13 +232,13 @@ public:
       @param[in]      numSteps      is a parameter which dictates the number of finite difference steps.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkGradient( const Vector<Real> &x,
-                                                         const Vector<Real> &g,
-                                                         const Vector<Real> &d,
-                                                         const bool printToStream = true,
-                                                         std::ostream & outStream = std::cout,
-                                                         const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
-                                                         const int order = 1 );
+  virtual std::vector<std::vector<Real>> checkGradient( const Vector<Real> &x,
+                                                        const Vector<Real> &g,
+                                                        const Vector<Real> &d,
+                                                        const bool printToStream = true,
+                                                        std::ostream & outStream = std::cout,
+                                                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                                                        const int order = 1 );
 
 
   /** \brief Finite-difference gradient check with specified step sizes.
@@ -246,12 +261,12 @@ public:
       @param[out]     outStream     is the output stream.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkGradient( const Vector<Real> &x,
-                                                         const Vector<Real> &d,
-                                                         const std::vector<Real> &steps,
-                                                         const bool printToStream = true,
-                                                         std::ostream & outStream = std::cout,
-                                                         const int order = 1 ) {
+  virtual std::vector<std::vector<Real>> checkGradient( const Vector<Real> &x,
+                                                        const Vector<Real> &d,
+                                                        const std::vector<Real> &steps,
+                                                        const bool printToStream = true,
+                                                        std::ostream & outStream = std::cout,
+                                                        const int order = 1 ) {
 
     return checkGradient(x, x.dual(), d, steps, printToStream, outStream, order);
 
@@ -280,13 +295,13 @@ public:
       @param[out]     outStream     is the output stream.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkGradient( const Vector<Real> &x,
-                                                         const Vector<Real> &g,
-                                                         const Vector<Real> &d,
-                                                         const std::vector<Real> &steps,
-                                                         const bool printToStream = true,
-                                                         std::ostream & outStream = std::cout,
-                                                         const int order = 1 );
+  virtual std::vector<std::vector<Real>> checkGradient( const Vector<Real> &x,
+                                                        const Vector<Real> &g,
+                                                        const Vector<Real> &d,
+                                                        const std::vector<Real> &steps,
+                                                        const bool printToStream = true,
+                                                        std::ostream & outStream = std::cout,
+                                                        const int order = 1 );
 
   /** \brief Finite-difference Hessian-applied-to-vector check.
 
@@ -294,26 +309,26 @@ public:
       At each step of the sequence, the finite difference step size is decreased.  The output 
       compares the error 
       \f[
-          \left\| \frac{\nabla f(x+td) - \nabla f(x)}{t} - \nabla^2 f(x)d\right\|_{\mathcal{X}^*}.
+          \left\| \frac{\nabla f(x+tv) - \nabla f(x)}{t} - \nabla^2 f(x)v\right\|_{\mathcal{X}^*},
       \f]
       if the approximation is first order. More generally, difference approximation is
       \f[
-          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i d)     
+          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i v),     
       \f]
       where m = order+1, \f$w_i\f$ are the difference weights and \f$c_i\f$ are the difference steps
       @param[in]      x             is an optimization variable.
-      @param[in]      d             is a direction vector.
+      @param[in]      v             is a direction vector.
       @param[in]      printToStream is a flag that turns on/off output.
       @param[out]     outStream     is the output stream.
       @param[in]      numSteps      is a parameter which dictates the number of finite difference steps.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkHessVec( const Vector<Real> &x,
-                                                        const Vector<Real> &v,
-                                                        const bool printToStream = true,
-                                                        std::ostream & outStream = std::cout,
-                                                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
-                                                        const int order = 1 ) {
+  virtual std::vector<std::vector<Real>> checkHessVec( const Vector<Real> &x,
+                                                       const Vector<Real> &v,
+                                                       const bool printToStream = true,
+                                                       std::ostream & outStream = std::cout,
+                                                       const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                                                       const int order = 1 ) {
 
     return checkHessVec(x, x.dual(), v, printToStream, outStream, numSteps, order);
 
@@ -325,28 +340,28 @@ public:
       At each step of the sequence, the finite difference step size is decreased.  The output 
       compares the error 
       \f[
-          \left\| \frac{\nabla f(x+td) - \nabla f(x)}{t} - \nabla^2 f(x)d\right\|_{\mathcal{X}^*}.
+          \left\| \frac{\nabla f(x+tv) - \nabla f(x)}{t} - \nabla^2 f(x)v\right\|_{\mathcal{X}^*},
       \f]
       if the approximation is first order. More generally, difference approximation is
       \f[
-          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i d)     
+          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i v),     
       \f]
       where m = order+1, \f$w_i\f$ are the difference weights and \f$c_i\f$ are the difference steps
       @param[in]      x             is an optimization variable.
       @param[in]      hv            is used to create temporary gradient and Hessian-times-vector vectors.
-      @param[in]      d             is a direction vector.
+      @param[in]      v             is a direction vector.
       @param[in]      printToStream is a flag that turns on/off output.
       @param[out]     outStream     is the output stream.
       @param[in]      numSteps      is a parameter which dictates the number of finite difference steps.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkHessVec( const Vector<Real> &x,
-                                                        const Vector<Real> &hv,
-                                                        const Vector<Real> &v,
-                                                        const bool printToStream = true,
-                                                        std::ostream & outStream = std::cout,
-                                                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
-                                                        const int order = 1) ;
+  virtual std::vector<std::vector<Real>> checkHessVec( const Vector<Real> &x,
+                                                       const Vector<Real> &hv,
+                                                       const Vector<Real> &v,
+                                                       const bool printToStream = true,
+                                                       std::ostream & outStream = std::cout,
+                                                       const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                                                       const int order = 1) ;
 
 
   /** \brief Finite-difference Hessian-applied-to-vector check with specified step sizes.
@@ -355,26 +370,26 @@ public:
       At each step of the sequence, the finite difference step size is decreased.  The output 
       compares the error 
       \f[
-          \left\| \frac{\nabla f(x+td) - \nabla f(x)}{t} - \nabla^2 f(x)d\right\|_{\mathcal{X}^*}.
+          \left\| \frac{\nabla f(x+tv) - \nabla f(x)}{t} - \nabla^2 f(x)v\right\|_{\mathcal{X}^*},
       \f]
       if the approximation is first order. More generally, difference approximation is
       \f[
-          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i d)     
+          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i v),     
       \f]
       where m = order+1, \f$w_i\f$ are the difference weights and \f$c_i\f$ are the difference steps
       @param[in]      x             is an optimization variable.
-      @param[in]      d             is a direction vector.
+      @param[in]      v             is a direction vector.
       @param[in]      steps         is vector of steps of user-specified size.
       @param[in]      printToStream is a flag that turns on/off output.
       @param[out]     outStream     is the output stream.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkHessVec( const Vector<Real> &x,
-                                                        const Vector<Real> &v,
-                                                        const std::vector<Real> &steps,
-                                                        const bool printToStream = true,
-                                                        std::ostream & outStream = std::cout,
-                                                        const int order = 1 ) {
+  virtual std::vector<std::vector<Real>> checkHessVec( const Vector<Real> &x,
+                                                       const Vector<Real> &v,
+                                                       const std::vector<Real> &steps,
+                                                       const bool printToStream = true,
+                                                       std::ostream & outStream = std::cout,
+                                                       const int order = 1 ) {
 
     return checkHessVec(x, x.dual(), v, steps, printToStream, outStream, order);
 
@@ -386,28 +401,28 @@ public:
       At each step of the sequence, the finite difference step size is decreased.  The output 
       compares the error 
       \f[
-          \left\| \frac{\nabla f(x+td) - \nabla f(x)}{t} - \nabla^2 f(x)d\right\|_{\mathcal{X}^*}.
+          \left\| \frac{\nabla f(x+tv) - \nabla f(x)}{t} - \nabla^2 f(x)v\right\|_{\mathcal{X}^*},
       \f]
       if the approximation is first order. More generally, difference approximation is
       \f[
-          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i d)     
+          \frac{1}{t} \sum\limits_{i=1}^m w_i \nabla f(x+t c_i v),     
       \f]
       where m = order+1, \f$w_i\f$ are the difference weights and \f$c_i\f$ are the difference steps
       @param[in]      x             is an optimization variable.
       @param[in]      hv            is used to create temporary gradient and Hessian-times-vector vectors.
-      @param[in]      d             is a direction vector.
+      @param[in]      v             is a direction vector.
       @param[in]      steps         is vector of steps of user-specified size.
       @param[in]      printToStream is a flag that turns on/off output.
       @param[out]     outStream     is the output stream.
       @param[in]      order         is the order of the finite difference approximation (1,2,3,4)
   */
-  virtual std::vector<std::vector<Real> > checkHessVec( const Vector<Real> &x,
-                                                        const Vector<Real> &hv,
-                                                        const Vector<Real> &v,
-                                                        const std::vector<Real> &steps,
-                                                        const bool printToStream = true,
-                                                        std::ostream & outStream = std::cout,
-                                                        const int order = 1) ;
+  virtual std::vector<std::vector<Real>> checkHessVec( const Vector<Real> &x,
+                                                       const Vector<Real> &hv,
+                                                       const Vector<Real> &v,
+                                                       const std::vector<Real> &steps,
+                                                       const bool printToStream = true,
+                                                       std::ostream & outStream = std::cout,
+                                                       const int order = 1) ;
 
 
   /** \brief Hessian symmetry check.
@@ -455,6 +470,31 @@ public:
                                           const Vector<Real> &w,
                                           const bool printToStream = true,
                                           std::ostream & outStream = std::cout );
+
+  /** \brief Finite-difference proximity operator Jacobian-applied-to-vector check.
+
+      This function computes a sequence of one-sided finite-difference checks for the proximity
+      operator Jacobian.  
+      At each step of the sequence, the finite difference step size is decreased.  The output 
+      compares the error 
+      \f[
+          \left\| \frac{\mathrm{prox}_{t f}(x+tv) - \mathrm{prox}_{t f}(x)}{t} - J_{t f}(x+tv)v\right\|_{\mathcal{X}},
+      \f]
+      if the approximation is first order.  Note that in some cases the proximity operator
+      is semismooth, which motivates the evaluation of \f$J_{t f}\f$ at \f$x+tv\f$.
+      @param[in]      x             is an optimization vector.
+      @param[in]      v             is a direction vector.
+      @param[in]      t             is the proximity operator parameter.
+      @param[in]      printToStream is a flag that turns on/off output.
+      @param[out]     outStream     is the output stream.
+      @param[in]      numSteps      is a parameter which dictates the number of finite difference steps.
+  */
+  virtual std::vector<std::vector<Real>> checkProxJacVec( const Vector<Real> &x,
+                                                          const Vector<Real> &v,
+                                                          Real t = Real(1),
+                                                          bool printToStream = true,
+                                                          std::ostream &outStream = std::cout,
+                                                          int numSteps = ROL_NUM_CHECKDERIV_STEPS);
 
 // Definitions for parametrized (stochastic) objective functions
 private:

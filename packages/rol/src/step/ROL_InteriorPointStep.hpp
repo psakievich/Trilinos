@@ -1,51 +1,23 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_INTERIORPOINTSTEP_H
 #define ROL_INTERIORPOINTSTEP_H
 
 #include "ROL_CompositeStep.hpp"
+#include "ROL_AugmentedLagrangianStep.hpp"
+#include "ROL_FletcherStep.hpp"
+#include "ROL_BundleStep.hpp"
+#include "ROL_TrustRegionStep.hpp"
+#include "ROL_LineSearchStep.hpp"
 #include "ROL_ConstraintStatusTest.hpp"
+#include "ROL_BundleStatusTest.hpp"
 #include "ROL_InteriorPoint.hpp"
 #include "ROL_ObjectiveFromBoundConstraint.hpp"
 #include "ROL_Types.hpp"
@@ -53,6 +25,9 @@
 
 
 namespace ROL {
+
+template<class Real>
+class AugmentedLagrangianStep;
 
 template <class Real>
 class InteriorPointStep : public Step<Real> {
@@ -256,20 +231,23 @@ public:
       Ptr<Constraint<Real>> raw_con = makePtrFromRef(con);
       Ptr<StepState<Real>>  state   = Step<Real>::getState();
       penObj = makePtr<AugmentedLagrangian<Real>>(raw_obj,raw_con,l,one,x,*(state->constraintVec),parlist_);
+      step_  = makePtr<AugmentedLagrangianStep<Real>>(parlist_);
     }
     else if (stepType_ == STEP_FLETCHER) {
       Ptr<Objective<Real>>  raw_obj = makePtrFromRef(obj);
       Ptr<Constraint<Real>> raw_con = makePtrFromRef(con);
       Ptr<StepState<Real>>  state   = Step<Real>::getState();
       penObj = makePtr<Fletcher<Real>>(raw_obj,raw_con,x,*(state->constraintVec),parlist_);
+      step_  = makePtr<FletcherStep<Real>>(parlist_);
     }
     else {
       penObj = makePtrFromRef(obj);
       stepname_ = "Composite Step";
       stepType_ = STEP_COMPOSITESTEP;
+      step_     = makePtr<CompositeStep<Real>>(parlist_);
     }
-    algo_ = ROL::makePtr<Algorithm<Real>>(stepname_,parlist_,false);
-    //algo_ = ROL::makePtr<Algorithm<Real>>("Composite Step",parlist_,false);
+    status_ = makePtr<ConstraintStatusTest<Real>>(parlist_);
+    algo_ = ROL::makePtr<Algorithm<Real>>(step_,status_,false);
 
     //  Run the algorithm
     x_->set(x); l_->set(l);
@@ -300,12 +278,24 @@ public:
     auto& ipobj = dynamic_cast<IPOBJ&>(obj);
 
     // Create the algorithm 
-    algo_ = ROL::makePtr<Algorithm<Real>>("Trust Region",parlist_,false);
+    if (stepType_ == STEP_BUNDLE) {
+      status_ = makePtr<BundleStatusTest<Real>>(parlist_);
+      step_   = makePtr<BundleStep<Real>>(parlist_);
+    }
+    else if (stepType_ == STEP_LINESEARCH) {
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      step_   = makePtr<LineSearchStep<Real>>(parlist_);
+    }
+    else {
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      step_   = makePtr<TrustRegionStep<Real>>(parlist_);
+    }
+    algo_ = ROL::makePtr<Algorithm<Real>>(step_,status_,false);
 
     //  Run the algorithm
     x_->set(x);
     algo_->run(*x_,*g_,ipobj,*bnd_,print_);
-    s.set(*x_); s.axpy(-1.0,x);
+    s.set(*x_); s.axpy(static_cast<Real>(-1),x);
 
     // Get number of iterations from the subproblem solve
     subproblemIter_ = (algo_->getState())->iter;

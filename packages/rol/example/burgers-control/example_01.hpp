@@ -1,64 +1,20 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
-/*! \file  example_01.cpp
-    \brief Shows how to solve an optimal control problem constrained by 
-           steady Burgers' equation with bound constraints.
+/*! \file  example_01.hpp
+    \brief Provides definitions of equality constraint and objective for
+           example_01.
 */
-
-#include "ROL_Algorithm.hpp"
-#include "ROL_Types.hpp"
-#include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
-#include "Teuchos_LAPACK.hpp"
-
-#include <iostream>
-#include <algorithm>
 
 #include "ROL_StdVector.hpp"
 #include "ROL_Objective.hpp"
-#include "ROL_Bounds.hpp"
+#include "ROL_BoundConstraint.hpp"
 
 template<class Real>
 class Objective_BurgersControl : public ROL::Objective<Real> {
@@ -493,7 +449,7 @@ public:
       (*ex)[i] = std::max(this->x_lo_[i],std::min(this->x_up_[i],(*ex)[i]));
     }
   }
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex =
       dynamic_cast<const ROL::StdVector<Real>&>(x).getVector();
     ROL::Ptr<std::vector<Real> > ev =
@@ -505,7 +461,7 @@ public:
       }
     }
   }
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &x, Real eps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex =
       dynamic_cast<const ROL::StdVector<Real>&>(x).getVector();
     ROL::Ptr<std::vector<Real> > ev =
@@ -517,30 +473,30 @@ public:
       }
     }
   }
-  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneLowerActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex =
       dynamic_cast<ROL::StdVector<Real>&>(x).getVector();
     ROL::Ptr<const std::vector<Real> > eg =
       dynamic_cast<const ROL::StdVector<Real>&>(g).getVector();
     ROL::Ptr<std::vector<Real> > ev =
       dynamic_cast<ROL::StdVector<Real>&>(v).getVector();
-    Real epsn = std::min(eps,this->min_diff_);
+    Real epsn = std::min(xeps,this->min_diff_);
     for ( int i = 0; i < this->dim_; i++ ) {
-      if ( ((*ex)[i] <= this->x_lo_[i]+epsn && (*eg)[i] > 0.0) ){
+      if ( ((*ex)[i] <= this->x_lo_[i]+epsn && (*eg)[i] > geps) ){
         (*ev)[i] = 0.0;
       }
     }
   }
-  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real eps) {
+  void pruneUpperActive(ROL::Vector<Real> &v, const ROL::Vector<Real> &g, const ROL::Vector<Real> &x, Real xeps = Real(0), Real geps = Real(0)) {
     ROL::Ptr<const std::vector<Real> > ex =
       dynamic_cast<const ROL::StdVector<Real>&>(x).getVector();
     ROL::Ptr<const std::vector<Real> > eg =
       dynamic_cast<const ROL::StdVector<Real>&>(g).getVector();
     ROL::Ptr<std::vector<Real> > ev =
       dynamic_cast<ROL::StdVector<Real>&>(v).getVector();
-    Real epsn = std::min(eps,this->min_diff_);
+    Real epsn = std::min(xeps,this->min_diff_);
     for ( int i = 0; i < this->dim_; i++ ) {
-      if ( ((*ex)[i] >= this->x_up_[i]-epsn && (*eg)[i] < 0.0) ) {
+      if ( ((*ex)[i] >= this->x_up_[i]-epsn && (*eg)[i] < -geps) ) {
         (*ev)[i] = 0.0;
       }
     }

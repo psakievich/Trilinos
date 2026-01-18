@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  test_04.cpp
@@ -46,12 +12,12 @@
 */
 
 #include "ROL_Types.hpp"
-#include "ROL_Vector.hpp"
+#include "ROL_StdVector.hpp"
 #include "ROL_BoundConstraint.hpp"
 #include "ROL_Constraint_SimOpt.hpp"
 #include "ROL_Objective_SimOpt.hpp"
 
-#include "Teuchos_LAPACK.hpp"
+#include "ROL_LAPACK.hpp"
 
 template<class Real>
 class L2VectorPrimal;
@@ -111,7 +77,7 @@ private:
     else {
       u.assign(r.begin(),r.end());
       // Perform LDL factorization
-      Teuchos::LAPACK<int,Real> lp;
+      ROL::LAPACK<int,Real> lp;
       std::vector<Real> du2(r.size()-2,0.0);
       std::vector<int> ipiv(r.size(),0);
       int info;
@@ -531,337 +497,173 @@ public:
 };
 
 template<class Real>
-class L2VectorPrimal : public ROL::Vector<Real> {
+class L2VectorPrimal : public ROL::StdVector<Real> {
 private:
-  ROL::Ptr<std::vector<Real> > vec_;
-  ROL::Ptr<BurgersFEM<Real> > fem_;
-
-  mutable ROL::Ptr<L2VectorDual<Real> > dual_vec_;
+  ROL::Ptr<BurgersFEM<Real>> fem_;
+  mutable ROL::Ptr<L2VectorDual<Real>> dual_vec_;
+  mutable bool isDualInitialized_;
 
 public:
-  L2VectorPrimal(const ROL::Ptr<std::vector<Real> > & vec,
-                 const ROL::Ptr<BurgersFEM<Real> > &fem)
-    : vec_(vec), fem_(fem), dual_vec_(ROL::nullPtr) {}
+  L2VectorPrimal(const ROL::Ptr<std::vector<Real>> & vec,
+                 const ROL::Ptr<BurgersFEM<Real>> &fem)
+    : ROL::StdVector<Real>(vec),
+      fem_(fem), dual_vec_(ROL::nullPtr), isDualInitialized_(false) {}
 
-  void set( const ROL::Vector<Real> &x ) {
-    const L2VectorPrimal &ex = dynamic_cast<const L2VectorPrimal&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    std::copy(xval.begin(),xval.end(),vec_->begin());
-  }
-
-  void plus( const ROL::Vector<Real> &x ) {
-    const L2VectorPrimal &ex = dynamic_cast<const L2VectorPrimal&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension  = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] += xval[i];
-    }
-  }
-
-  void scale( const Real alpha ) {
-    unsigned dimension = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] *= alpha;
-    }
-  }
-
-  Real dot( const ROL::Vector<Real> &x ) const {
+  Real dot( const ROL::Vector<Real> &x ) const override {
     const L2VectorPrimal & ex = dynamic_cast<const L2VectorPrimal&>(x);
     const std::vector<Real>& xval = *ex.getVector();
-    return fem_->compute_L2_dot(xval,*vec_);
+    const std::vector<Real>& yval = *ROL::StdVector<Real>::getVector();
+    return fem_->compute_L2_dot(xval,yval);
   }
 
-  Real norm() const {
-    Real val = 0;
-    val = std::sqrt( dot(*this) );
-    return val;
+  ROL::Ptr<ROL::Vector<Real>> clone() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    return ROL::makePtr<L2VectorPrimal>(
+           ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
   }
 
-  ROL::Ptr<ROL::Vector<Real> > clone() const {
-    return ROL::makePtr<L2VectorPrimal>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-  }
-
-  ROL::Ptr<const std::vector<Real> > getVector() const {
-    return vec_;
-  }
-
-  ROL::Ptr<std::vector<Real> > getVector() {
-    return vec_;
-  }
-
-  ROL::Ptr<ROL::Vector<Real> > basis( const int i ) const {
-    ROL::Ptr<L2VectorPrimal> e
-      = ROL::makePtr<L2VectorPrimal>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-    (*e->getVector())[i] = 1.0;
-    return e;
-  }
-
-  int dimension() const {
-    return vec_->size();
-  }
-
-  const ROL::Vector<Real>& dual() const {
-    dual_vec_ = ROL::makePtr<L2VectorDual<Real>>(
-      ROL::makePtr<std::vector<Real>>(*vec_),fem_);
-
-    fem_->apply_mass(*(ROL::constPtrCast<std::vector<Real> >(dual_vec_->getVector())),*vec_);
+  const ROL::Vector<Real>& dual() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    if ( !isDualInitialized_ ) {
+      dual_vec_ = ROL::makePtr<L2VectorDual<Real>>(
+                  ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
+      isDualInitialized_ = true;
+    }
+    fem_->apply_mass(*ROL::constPtrCast<std::vector<Real>>(dual_vec_->getVector()),
+                     *ROL::StdVector<Real>::getVector());
     return *dual_vec_;
   }
-
 };
 
 template<class Real>
-class L2VectorDual : public ROL::Vector<Real> {
+class L2VectorDual : public ROL::StdVector<Real> {
 private:
-  ROL::Ptr<std::vector<Real> > vec_;
-  ROL::Ptr<BurgersFEM<Real> > fem_;
-
-  mutable ROL::Ptr<L2VectorPrimal<Real> > dual_vec_;
+  ROL::Ptr<BurgersFEM<Real>> fem_;
+  mutable ROL::Ptr<L2VectorPrimal<Real>> dual_vec_;
+  mutable bool isDualInitialized_;
 
 public:
-  L2VectorDual(const ROL::Ptr<std::vector<Real> > & vec,
-               const ROL::Ptr<BurgersFEM<Real> > &fem)
-    : vec_(vec), fem_(fem), dual_vec_(ROL::nullPtr) {}
+  L2VectorDual(const ROL::Ptr<std::vector<Real>> & vec,
+               const ROL::Ptr<BurgersFEM<Real>> &fem)
+    : ROL::StdVector<Real>(vec),
+      fem_(fem), dual_vec_(ROL::nullPtr), isDualInitialized_(false) {}
 
-  void set( const ROL::Vector<Real> &x ) {
-    const L2VectorDual &ex = dynamic_cast<const L2VectorDual&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    std::copy(xval.begin(),xval.end(),vec_->begin());
-  }
-
-  void plus( const ROL::Vector<Real> &x ) {
-    const L2VectorDual &ex = dynamic_cast<const L2VectorDual&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension  = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] += xval[i];
-    }
-  }
-
-  void scale( const Real alpha ) {
-    unsigned dimension = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] *= alpha;
-    }
-  }
-
-  Real dot( const ROL::Vector<Real> &x ) const {
+  Real dot( const ROL::Vector<Real> &x ) const override {
     const L2VectorDual & ex = dynamic_cast<const L2VectorDual&>(x);
     const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension = vec_->size();
-    std::vector<Real> Mx(dimension,0.0);
+    const std::vector<Real>& yval = *ROL::StdVector<Real>::getVector();
+    size_t dimension = yval.size();
+    std::vector<Real> Mx(dimension,Real(0));
     fem_->apply_inverse_mass(Mx,xval);
-    Real val = 0.0;
-    for (unsigned i = 0; i < dimension; i++) {
-      val += Mx[i]*(*vec_)[i];
+    Real val(0);
+    for (size_t i = 0; i < dimension; i++) {
+      val += Mx[i]*yval[i];
     }
     return val;
   }
 
-  Real norm() const {
-    Real val = 0;
-    val = std::sqrt( dot(*this) );
-    return val;
+  ROL::Ptr<ROL::Vector<Real>> clone() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    return ROL::makePtr<L2VectorDual>(
+           ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
   }
 
-  ROL::Ptr<ROL::Vector<Real> > clone() const {
-    return ROL::makePtr<L2VectorDual>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-  }
-
-  ROL::Ptr<const std::vector<Real> > getVector() const {
-    return vec_;
-  }
-
-  ROL::Ptr<std::vector<Real> > getVector() {
-    return vec_;
-  }
-
-  ROL::Ptr<ROL::Vector<Real> > basis( const int i ) const {
-    ROL::Ptr<L2VectorDual> e
-      = ROL::makePtr<L2VectorDual>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-    (*e->getVector())[i] = 1.0;
-    return e;
-  }
-
-  int dimension() const {
-    return vec_->size();
-  }
-
-  const ROL::Vector<Real>& dual() const {
-    dual_vec_ = ROL::makePtr<L2VectorPrimal<Real>>(
-      ROL::makePtr<std::vector<Real>>(*vec_),fem_);
-
-    fem_->apply_inverse_mass(*(ROL::constPtrCast<std::vector<Real> >(dual_vec_->getVector())),*vec_);
+  const ROL::Vector<Real>& dual() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    if ( !isDualInitialized_ ) {
+      dual_vec_ = ROL::makePtr<L2VectorPrimal<Real>>(
+                  ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
+      isDualInitialized_ = true;
+    }
+    fem_->apply_inverse_mass(*ROL::constPtrCast<std::vector<Real>>(dual_vec_->getVector()),
+                             *ROL::StdVector<Real>::getVector());
     return *dual_vec_;
   }
-
 };
 
 template<class Real>
-class H1VectorPrimal : public ROL::Vector<Real> {
+class H1VectorPrimal : public ROL::StdVector<Real> {
 private:
-  ROL::Ptr<std::vector<Real> > vec_;
-  ROL::Ptr<BurgersFEM<Real> > fem_;
-
-  mutable ROL::Ptr<H1VectorDual<Real> > dual_vec_;
+  ROL::Ptr<BurgersFEM<Real>> fem_;
+  mutable ROL::Ptr<H1VectorDual<Real>> dual_vec_;
+  mutable bool isDualInitialized_;
 
 public:
-  H1VectorPrimal(const ROL::Ptr<std::vector<Real> > & vec,
-                 const ROL::Ptr<BurgersFEM<Real> > &fem)
-    : vec_(vec), fem_(fem), dual_vec_(ROL::nullPtr) {}
+  H1VectorPrimal(const ROL::Ptr<std::vector<Real>> & vec,
+                 const ROL::Ptr<BurgersFEM<Real>> &fem)
+    : ROL::StdVector<Real>(vec),
+      fem_(fem), dual_vec_(ROL::nullPtr), isDualInitialized_(false) {}
 
-  void set( const ROL::Vector<Real> &x ) {
-    const H1VectorPrimal &ex = dynamic_cast<const H1VectorPrimal&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    std::copy(xval.begin(),xval.end(),vec_->begin());
-  }
-
-  void plus( const ROL::Vector<Real> &x ) {
-    const H1VectorPrimal &ex = dynamic_cast<const H1VectorPrimal&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension  = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] += xval[i];
-    }
-  }
-
-  void scale( const Real alpha ) {
-    unsigned dimension = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] *= alpha;
-    }
-  }
-
-  Real dot( const ROL::Vector<Real> &x ) const {
+  Real dot( const ROL::Vector<Real> &x ) const override {
     const H1VectorPrimal & ex = dynamic_cast<const H1VectorPrimal&>(x);
     const std::vector<Real>& xval = *ex.getVector();
-    return fem_->compute_H1_dot(xval,*vec_);
+    const std::vector<Real>& yval = *ROL::StdVector<Real>::getVector();
+    return fem_->compute_H1_dot(xval,yval);
   }
 
-  Real norm() const {
-    Real val = 0;
-    val = std::sqrt( dot(*this) );
-    return val;
+  ROL::Ptr<ROL::Vector<Real>> clone() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    return ROL::makePtr<H1VectorPrimal>(
+           ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
   }
 
-  ROL::Ptr<ROL::Vector<Real> > clone() const {
-    return ROL::makePtr<H1VectorPrimal>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-  }
-
-  ROL::Ptr<const std::vector<Real> > getVector() const {
-    return vec_;
-  }
-
-  ROL::Ptr<std::vector<Real> > getVector() {
-    return vec_;
-  }
-
-  ROL::Ptr<ROL::Vector<Real> > basis( const int i ) const {
-    ROL::Ptr<H1VectorPrimal> e
-      = ROL::makePtr<H1VectorPrimal>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-    (*e->getVector())[i] = 1.0;
-    return e;
-  }
-
-  int dimension() const {
-    return vec_->size();
-  }
-
-  const ROL::Vector<Real>& dual() const {
-    dual_vec_ = ROL::makePtr<H1VectorDual<Real>>(
-      ROL::makePtr<std::vector<Real>>(*vec_),fem_);
-
-    fem_->apply_H1(*(ROL::constPtrCast<std::vector<Real> >(dual_vec_->getVector())),*vec_);
+  const ROL::Vector<Real>& dual() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    if ( !isDualInitialized_ ) {
+      dual_vec_ = ROL::makePtr<H1VectorDual<Real>>(
+                  ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
+      isDualInitialized_ = true;
+    }
+    fem_->apply_H1(*ROL::constPtrCast<std::vector<Real>>(dual_vec_->getVector()),
+                   *ROL::StdVector<Real>::getVector());
     return *dual_vec_;
   }
-
 };
 
 template<class Real>
-class H1VectorDual : public ROL::Vector<Real> {
+class H1VectorDual : public ROL::StdVector<Real> {
 private:
-  ROL::Ptr<std::vector<Real> > vec_;
-  ROL::Ptr<BurgersFEM<Real> > fem_;
-
-  mutable ROL::Ptr<H1VectorPrimal<Real> > dual_vec_;
+  ROL::Ptr<BurgersFEM<Real>> fem_;
+  mutable ROL::Ptr<H1VectorPrimal<Real>> dual_vec_;
+  mutable bool isDualInitialized_;
 
 public:
-  H1VectorDual(const ROL::Ptr<std::vector<Real> > & vec,
-               const ROL::Ptr<BurgersFEM<Real> > &fem)
-    : vec_(vec), fem_(fem), dual_vec_(ROL::nullPtr) {}
+  H1VectorDual(const ROL::Ptr<std::vector<Real>> & vec,
+               const ROL::Ptr<BurgersFEM<Real>> &fem)
+    : ROL::StdVector<Real>(vec),
+      fem_(fem), dual_vec_(ROL::nullPtr), isDualInitialized_(false) {}
 
-  void set( const ROL::Vector<Real> &x ) {
-    const H1VectorDual &ex = dynamic_cast<const H1VectorDual&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    std::copy(xval.begin(),xval.end(),vec_->begin());
-  }
-
-  void plus( const ROL::Vector<Real> &x ) {
-    const H1VectorDual &ex = dynamic_cast<const H1VectorDual&>(x);
-    const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension  = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] += xval[i];
-    }
-  }
-
-  void scale( const Real alpha ) {
-    unsigned dimension = vec_->size();
-    for (unsigned i=0; i<dimension; i++) {
-      (*vec_)[i] *= alpha;
-    }
-  }
-
-  Real dot( const ROL::Vector<Real> &x ) const {
+  Real dot( const ROL::Vector<Real> &x ) const override {
     const H1VectorDual & ex = dynamic_cast<const H1VectorDual&>(x);
     const std::vector<Real>& xval = *ex.getVector();
-    unsigned dimension = vec_->size();
+    const std::vector<Real>& yval = *ROL::StdVector<Real>::getVector();
+    size_t dimension = yval.size();
     std::vector<Real> Mx(dimension,0.0);
     fem_->apply_inverse_H1(Mx,xval);
-    Real val = 0.0;
-    for (unsigned i = 0; i < dimension; i++) {
-      val += Mx[i]*(*vec_)[i];
+    Real val(0);
+    for (size_t i = 0; i < dimension; i++) {
+      val += Mx[i]*yval[i];
     }
     return val;
   }
 
-  Real norm() const {
-    Real val = 0;
-    val = std::sqrt( dot(*this) );
-    return val;
+  ROL::Ptr<ROL::Vector<Real>> clone() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    return ROL::makePtr<H1VectorDual>(
+           ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
   }
 
-  ROL::Ptr<ROL::Vector<Real>> clone() const {
-    return ROL::makePtr<H1VectorDual>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-  }
-
-  ROL::Ptr<const std::vector<Real> > getVector() const {
-    return vec_;
-  }
-
-  ROL::Ptr<std::vector<Real> > getVector() {
-    return vec_;
-  }
-
-  ROL::Ptr<ROL::Vector<Real> > basis( const int i ) const {
-    ROL::Ptr<H1VectorDual> e
-      = ROL::makePtr<H1VectorDual>( ROL::makePtr<std::vector<Real>>(vec_->size(),0.0),fem_);
-    (*e->getVector())[i] = 1.0;
-    return e;
-  }
-
-  int dimension() const {
-    return vec_->size();
-  }
-
-  const ROL::Vector<Real>& dual() const {
-    dual_vec_ = ROL::makePtr<H1VectorPrimal<Real>>(
-      ROL::makePtr<std::vector<Real>>(*vec_),fem_);
-
-    fem_->apply_inverse_H1(*(ROL::constPtrCast<std::vector<Real> >(dual_vec_->getVector())),*vec_);
+  const ROL::Vector<Real>& dual() const override {
+    size_t dimension = ROL::StdVector<Real>::getVector()->size();
+    if ( !isDualInitialized_ ) {
+      dual_vec_ = ROL::makePtr<H1VectorPrimal<Real>>(
+                  ROL::makePtr<std::vector<Real>>(dimension,Real(0)),fem_);
+      isDualInitialized_ = true;
+    }
+    fem_->apply_inverse_H1(*ROL::constPtrCast<std::vector<Real>>(dual_vec_->getVector()),
+                           *ROL::StdVector<Real>::getVector());
     return *dual_vec_;
   }
-
 };
 
 template<class Real>

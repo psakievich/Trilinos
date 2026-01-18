@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_01.cpp
@@ -46,7 +12,7 @@
 */
 
 #include "Teuchos_Comm.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 #include "Tpetra_Core.hpp"
 #include "Tpetra_Version.hpp"
 
@@ -56,11 +22,12 @@
 #include "ROL_Bounds.hpp"
 #include "ROL_Stream.hpp"
 #include "ROL_ParameterList.hpp"
-#include "ROL_OptimizationSolver.hpp"
+#include "ROL_Solver.hpp"
 #include "ROL_ReducedDynamicObjective.hpp"
 #include "ROL_DynamicConstraintCheck.hpp"
 #include "ROL_DynamicObjectiveCheck.hpp"
 
+#include "../../TOOLS/lindynconstraint.hpp"
 #include "../../TOOLS/dynconstraint.hpp"
 #include "../../TOOLS/pdeobjective.hpp"
 #include "../../TOOLS/ltiobjective.hpp"
@@ -74,7 +41,7 @@ int main(int argc, char *argv[]) {
   using RealT = double;
 
   /*** Initialize communicator. ***/
-  Teuchos::GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
   ROL::Ptr<const Teuchos::Comm<int>> comm
     = Tpetra::getDefaultComm();
 
@@ -93,6 +60,13 @@ int main(int argc, char *argv[]) {
     RealT T        = parlist->sublist("Time Discretization").get("End Time",             1.0);
     RealT dt       = T/static_cast<RealT>(nt);
 
+    parlist->sublist("Reduced Dynamic Objective").set("State Domain Seed",12321*(myRank+1));
+    parlist->sublist("Reduced Dynamic Objective").set("State Range Seed", 32123*(myRank+1));
+    parlist->sublist("Reduced Dynamic Objective").set("Adjoint Domain Seed",23432*(myRank+1));
+    parlist->sublist("Reduced Dynamic Objective").set("Adjoint Range Seed", 43234*(myRank+1));
+    parlist->sublist("Reduced Dynamic Objective").set("State Sensitivity Domain Seed",34543*(myRank+1));
+    parlist->sublist("Reduced Dynamic Objective").set("State Sensitivity Range Seed", 54345*(myRank+1));
+
     /*************************************************************************/
     /***************** BUILD GOVERNING PDE ***********************************/
     /*************************************************************************/
@@ -106,11 +80,19 @@ int main(int argc, char *argv[]) {
     /*************************************************************************/
     /***************** BUILD CONSTRAINT **************************************/
     /*************************************************************************/
-    ROL::Ptr<DynConstraint<RealT> > dyn_con
-      = ROL::makePtr<DynConstraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
-    const ROL::Ptr<Assembler<RealT>> assembler = dyn_con->getAssembler();
+    ROL::Ptr<ROL::DynamicConstraint<RealT>> dyn_con;
+    ROL::Ptr<Assembler<RealT>> assembler;
+    int nltype = parlist->sublist("Semilinear").get("Nonlinearity Type",0);
+    if (nltype == 0) {
+      dyn_con = ROL::makePtr<LinDynConstraint<RealT>>(pde,meshMgr,comm,*parlist,true,*outStream);
+      assembler = ROL::staticPtrCast<LinDynConstraint<RealT>>(dyn_con)->getAssembler();
+    }
+    else {
+      dyn_con = ROL::makePtr<DynConstraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
+      assembler = ROL::staticPtrCast<DynConstraint<RealT>>(dyn_con)->getAssembler();
+    }
     dyn_con->setSolveParameters(*parlist);
-    dyn_con->getAssembler()->printMeshData(*outStream);
+    assembler->printMeshData(*outStream);
 
     /*************************************************************************/
     /***************** BUILD VECTORS *****************************************/
@@ -154,7 +136,30 @@ int main(int argc, char *argv[]) {
     }
     ROL::ParameterList &rpl = parlist->sublist("Reduced Dynamic Objective");
     ROL::Ptr<ROL::ReducedDynamicObjective<RealT>> obj
-      = ROL::makePtr<ROL::ReducedDynamicObjective<RealT>>(dyn_obj, dyn_con, u0, zk, ck, timeStamp, rpl);
+      = ROL::makePtr<ROL::ReducedDynamicObjective<RealT>>(dyn_obj, dyn_con, u0, zk, ck, timeStamp, rpl,outStream);
+    // print uncontrolled state
+    bool print_unc = true;
+    if (print_unc) {
+      std::clock_t timer_print_unc = std::clock();
+      // Output state and control to file
+      uo->set(*u0); un->zero(); z->zero();
+      for (int k = 1; k < nt; ++k) {
+        // Print previous state to file
+        std::stringstream ufile;
+        ufile << "uncontrolled_state." << k-1 << ".txt";
+        assembler->outputTpetraVector(uo_ptr, ufile.str());
+        // Advance time stepper
+        dyn_con->solve(*ck, *uo, *un, *z->get(k), timeStamp[k]);
+        uo->set(*un);
+      }
+      // Print previous state to file
+      std::stringstream ufile;
+      ufile << "uncontrolled_state." << nt-1 << ".txt";
+      assembler->outputTpetraVector(uo_ptr, ufile.str());
+      *outStream << "Output time: "
+                 << static_cast<RealT>(std::clock()-timer_print_unc)/static_cast<RealT>(CLOCKS_PER_SEC)
+                 << " seconds." << std::endl << std::endl;
+    }
  
     /*************************************************************************/
     /***************** BUILD BOUND CONSTRAINT ********************************/
@@ -167,9 +172,6 @@ int main(int argc, char *argv[]) {
     zlo->setScalar(lbnd);
     zhi->setScalar(ubnd);
     ROL::Ptr<ROL::BoundConstraint<RealT>>   bnd = ROL::makePtr<ROL::Bounds<RealT>>(zlo,zhi);
-    if (deactivate) {
-      bnd->deactivate();
-    }
 
     /*************************************************************************/
     /***************** RUN VECTOR AND DERIVATIVE CHECKS **********************/
@@ -191,8 +193,10 @@ int main(int argc, char *argv[]) {
     /*************************************************************************/
     /***************** SOLVE OPTIMIZATION PROBLEM ****************************/
     /*************************************************************************/
-    ROL::OptimizationProblem<RealT> problem(obj,z,bnd);
-    ROL::OptimizationSolver<RealT> solver(problem,*parlist);
+    ROL::Ptr<ROL::Problem<RealT>> problem = ROL::makePtr<ROL::Problem<RealT>>(obj,z);
+    if (!deactivate) problem->addBoundConstraint(bnd);
+    problem->finalize(false,true,*outStream);
+    ROL::Solver<RealT> solver(problem,*parlist);
     z->zero();
     std::clock_t timer = std::clock();
     solver.solve(*outStream);
@@ -210,11 +214,11 @@ int main(int argc, char *argv[]) {
       // Print previous state to file
       std::stringstream ufile;
       ufile << "state." << k-1 << ".txt";
-      dyn_con->outputTpetraVector(uo_ptr, ufile.str());
+      assembler->outputTpetraVector(uo_ptr, ufile.str());
       // Print current control
       std::stringstream zfile;
       zfile << "control." << k-1 << ".txt";
-      dyn_con->outputTpetraVector(ROL::dynamicPtrCast<PDE_PrimalOptVector<RealT>>(z->get(k-1))->getVector(),zfile.str());
+      assembler->outputTpetraVector(ROL::staticPtrCast<PDE_PrimalOptVector<RealT>>(z->get(k-1))->getVector(),zfile.str());
       // Advance time stepper
       dyn_con->solve(*ck, *uo, *un, *z->get(k), timeStamp[k]);
       uo->set(*un);
@@ -222,16 +226,16 @@ int main(int argc, char *argv[]) {
     // Print previous state to file
     std::stringstream ufile;
     ufile << "state." << nt-1 << ".txt";
-    dyn_con->outputTpetraVector(uo_ptr, ufile.str());
+    assembler->outputTpetraVector(uo_ptr, ufile.str());
     // Print current control
     std::stringstream zfile;
     zfile << "control." << nt-1 << ".txt";
-    dyn_con->outputTpetraVector(ROL::dynamicPtrCast<PDE_PrimalOptVector<RealT>>(z->get(nt-1))->getVector(),zfile.str());
+    assembler->outputTpetraVector(ROL::staticPtrCast<PDE_PrimalOptVector<RealT>>(z->get(nt-1))->getVector(),zfile.str());
     *outStream << "Output time: "
                << static_cast<RealT>(std::clock()-timer_print)/static_cast<RealT>(CLOCKS_PER_SEC)
                << " seconds." << std::endl << std::endl;
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

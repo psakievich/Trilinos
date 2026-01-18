@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_TRUSTREGION_H
@@ -60,7 +26,7 @@ template<class Real>
 class TrustRegion {
 private:
 
-  ROL::Ptr<Vector<Real> > prim_, dual_;
+  ROL::Ptr<Vector<Real> > prim_, dual_, xtmp_;
 
   ETrustRegionModel TRmodel_;
 
@@ -79,16 +45,23 @@ private:
 
   unsigned verbosity_;
 
+  // POST SMOOTHING PARAMETERS
+  Real alpha_init_; ///< Initial line-search parameter for projected methods.
+  int  max_fval_;   ///< Maximum function evaluations in line-search for projected methods.
+  Real mu_;         ///< Post-Smoothing tolerance for projected methods.
+  Real beta_;       ///< Post-Smoothing rate for projected methods.
+
 public:
 
   virtual ~TrustRegion() {}
 
   // Constructor
   TrustRegion( ROL::ParameterList &parlist )
-    : ftol_old_(ROL_OVERFLOW<Real>()), cnt_(0), verbosity_(0) {
+    : pRed_(0), ftol_old_(ROL_OVERFLOW<Real>()), cnt_(0), verbosity_(0) {
     // Trust-Region Parameters
     ROL::ParameterList list = parlist.sublist("Step").sublist("Trust Region");
-    TRmodel_ = StringToETrustRegionModel(list.get("Subproblem Model", "Kelley-Sachs"));
+    std::string modelName = list.get("Subproblem Model", "Kelley-Sachs");
+    TRmodel_ = StringToETrustRegionModel(modelName);
     eta0_    = list.get("Step Acceptance Threshold",            static_cast<Real>(0.05));
     eta1_    = list.get("Radius Shrinking Threshold",           static_cast<Real>(0.05));
     eta2_    = list.get("Radius Growing Threshold",             static_cast<Real>(0.9));
@@ -101,9 +74,13 @@ public:
     // General Inexactness Information
     ROL::ParameterList &glist = parlist.sublist("General");
     useInexact_.clear();
-    useInexact_.push_back(glist.get("Inexact Objective Function",     false));
-    useInexact_.push_back(glist.get("Inexact Gradient",               false));
-    useInexact_.push_back(glist.get("Inexact Hessian-Times-A-Vector", false));
+
+    bool inexactObj     = glist.get("Inexact Objective Function",     false);
+    bool inexactGrad    = glist.get("Inexact Gradient",               false);
+    bool inexactHessVec = glist.get("Inexact Hessian-Times-A-Vector", false);
+    useInexact_.push_back(inexactObj    );
+    useInexact_.push_back(inexactGrad   );
+    useInexact_.push_back(inexactHessVec);
     // Inexact Function Evaluation Information
     ROL::ParameterList &ilist = list.sublist("Inexact").sublist("Value");
     scale_       = ilist.get("Tolerance Scaling",                 static_cast<Real>(1.e-1));
@@ -113,11 +90,17 @@ public:
     forceFactor_ = ilist.get("Forcing Sequence Reduction Factor", static_cast<Real>(0.1));
     // Get verbosity level
     verbosity_ = glist.get("Print Verbosity", 0);
+    // Post-smoothing parameters
+    max_fval_    = list.sublist("Post-Smoothing").get("Function Evaluation Limit", 20);
+    alpha_init_  = list.sublist("Post-Smoothing").get("Initial Step Size", static_cast<Real>(1));
+    mu_          = list.sublist("Post-Smoothing").get("Tolerance",         static_cast<Real>(0.9999));
+    beta_        = list.sublist("Post-Smoothing").get("Rate",              static_cast<Real>(0.01));
   }
 
   virtual void initialize( const Vector<Real> &x, const Vector<Real> &s, const Vector<Real> &g) {
     prim_ = x.clone();
     dual_ = g.clone();
+    xtmp_ = x.clone();
   }
 
   virtual void update( Vector<Real>           &x,
@@ -163,7 +146,10 @@ public:
     }
     // Evaluate objective function at new iterate
     prim_->set(x); prim_->plus(s);
-    obj.update(*prim_,true);
+    if (bnd.isActivated()) {
+      bnd.project(*prim_);
+    }
+    obj.update(*prim_);
     fnew = obj.value(*prim_,ftol);
 
     nfval = 1;
@@ -227,7 +213,6 @@ public:
     // FINISH COMPUTE RATIO OF ACTUAL AND PREDICTED REDUCTION
     /***************************************************************************************************/
 
-
     /***************************************************************************************************/
     // BEGIN CHECK SUFFICIENT DECREASE FOR BOUND CONSTRAINED PROBLEMS
     /***************************************************************************************************/
@@ -274,7 +259,7 @@ public:
       std::cout << "    Trust-region radius before update:       " << del   << std::endl;
     }
     if ((rho < eta0_ && flagTR == TRUSTREGION_FLAG_SUCCESS) || flagTR >= 2 || !decr ) { // Step Rejected
-      fnew = fold1;
+      fnew = fold1; // This is a bug if rho < zero...
       if (rho < zero) { // Negative reduction, interpolate to find new trust-region radius
         Real gs(0);
         if ( bnd.isActivated() ) {
@@ -300,12 +285,62 @@ public:
     }
     else if ((rho >= eta0_ && flagTR != TRUSTREGION_FLAG_NPOSPREDNEG) ||
              (flagTR == TRUSTREGION_FLAG_POSPREDNEG)) { // Step Accepted
-      x.plus(s);
-      obj.update(x,true,iter);
+      // Perform line search (smoothing) to ensure decrease 
+      if ( bnd.isActivated() && TRmodel_ == TRUSTREGION_MODEL_KELLEYSACHS ) {
+        // Compute new gradient
+        xtmp_->set(x); xtmp_->plus(s);
+        bnd.project(*xtmp_);
+        obj.update(*xtmp_);
+        obj.gradient(*dual_,*xtmp_,tol); // MUST DO SOMETHING HERE WITH TOL
+        ngrad++;
+        // Compute smoothed step
+        Real alpha(1);
+        prim_->set(*xtmp_);
+        prim_->axpy(-alpha/alpha_init_,dual_->dual());
+        bnd.project(*prim_);
+        // Compute new objective value
+        obj.update(*prim_);
+        Real ftmp = obj.value(*prim_,tol); // MUST DO SOMETHING HERE WITH TOL
+        nfval++;
+        // Perform smoothing
+        int cnt = 0;
+        alpha = alpha_init_;
+        while ( (ftmp-fnew) >= mu_*aRed ) { 
+          prim_->set(*xtmp_);
+          prim_->axpy(-alpha/alpha_init_,dual_->dual());
+          bnd.project(*prim_);
+          obj.update(*prim_);
+          ftmp = obj.value(*prim_,tol); // MUST DO SOMETHING HERE WITH TOL
+          nfval++;
+          if ( cnt >= max_fval_ ) {
+            break;
+          }
+          alpha *= beta_;
+          cnt++;
+        }
+        // Store objective function and iteration information
+        if (std::isnan(ftmp)) {
+          flagTR = TRUSTREGION_FLAG_NAN;
+          del = gamma1_*std::min(snorm,del);
+	  rho = static_cast<Real>(-1);
+	  //x.axpy(static_cast<Real>(-1),s);
+	  //obj.update(x,true,iter);
+	  fnew = fold1;
+	}
+	else {
+          fnew = ftmp;
+          x.set(*prim_);
+	}
+      }
+      else {
+        x.plus(s);
+      }
       if (rho >= eta2_) { // Increase trust-region radius
         del = gamma2_*del;
       }
+      obj.update(x,true,iter);
     }
+
     if ( verbosity_ > 0 ) {
       std::cout << "    Trust-region radius after update:        " << del << std::endl;
       std::cout << std::endl;

@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  sysbuilder.hpp
@@ -48,7 +14,7 @@
 #ifndef ROL_PDEOPT_SYSBUILDER_H
 #define ROL_PDEOPT_SYSBUILDER_H
 
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 #include "Teuchos_TimeMonitor.hpp"
 
 #include "Tpetra_MultiVector.hpp"
@@ -107,9 +73,9 @@ public:
     ROL::Ptr<const Tpetra::Map<> > mapRes = A->getRangeMap();
 
     // Get individual indices.
-    Teuchos::ArrayView<const GO> idxSim = mapSim->getNodeElementList(); 
-    Teuchos::ArrayView<const GO> idxOpt = mapOpt->getNodeElementList(); 
-    Teuchos::ArrayView<const GO> idxRes = mapRes->getNodeElementList();
+    Teuchos::ArrayView<const GO> idxSim = mapSim->getLocalElementList();
+    Teuchos::ArrayView<const GO> idxOpt = mapOpt->getLocalElementList();
+    Teuchos::ArrayView<const GO> idxRes = mapRes->getLocalElementList();
 
     // Get communicator.
     ROL::Ptr<const Teuchos::Comm<int> > comm = mapSim->getComm();
@@ -137,9 +103,6 @@ public:
     // Assemble global graph structure.
     ROL::Ptr<Tpetra::CrsGraph<> > sysGraph = ROL::makePtr<Tpetra::CrsGraph<>>(sysMap, totalNumEntries);
 
-    // Prepare temporary data structures.
-    GO gid = 0;
-
     // Create transposes of matrices A and B.
     Tpetra::RowMatrixTransposer<> transposerA(A);
     Tpetra::RowMatrixTransposer<> transposerB(B);
@@ -149,39 +112,37 @@ public:
     // Insert indices of matrix H12 (Hessian_11), matrix H12 (Hessian_12) and matrix A (Jacobian_1) transposed.
     LO nRows = idxSim.size();
     size_t numEntries(0);
-    Teuchos::Array<GO> indices;
-    Teuchos::Array<Real> values;
+    typename Tpetra::CrsMatrix<>::nonconst_global_inds_host_view_type indices;
+    typename Tpetra::CrsMatrix<>::nonconst_values_host_view_type values;
     for (LO i=0; i<nRows; ++i) {
       //
       if (H11 != ROL::nullPtr) {
         numEntries = H11->getNumEntriesInGlobalRow(idxSim[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H11->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
-        sysGraph->insertGlobalIndices(i+offsetSim, indices);
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H11->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
+        sysGraph->insertGlobalIndices(i+offsetSim, indices.size(), indices.data());
       }
       //
       if (H12 != ROL::nullPtr) {
         numEntries = H12->getNumEntriesInGlobalRow(idxSim[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H12->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
-        Teuchos::Array<GO> indicesShifted(indices);
-        for (SZ j=0; j<indicesShifted.size(); ++j) {
-          indicesShifted[j] += offsetOpt;
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H12->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
+        for (size_t j=0; j<numEntries; ++j) {
+          indices(j) += offsetOpt;
         }
-        sysGraph->insertGlobalIndices(i+offsetSim, indicesShifted);
+        sysGraph->insertGlobalIndices(i+offsetSim, indices.size(), indices.data());
       }
       //
       numEntries = A_trans->getNumEntriesInGlobalRow(idxSim[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      A_trans->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetRes;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      A_trans->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetRes;
       }
-      sysGraph->insertGlobalIndices(i+offsetSim, indicesShifted());
+      sysGraph->insertGlobalIndices(i+offsetSim, indices.size(), indices.data());
     }
     // Insert indices of matrix H21 (Hessian_21), matrix H22 (Hessian_22) and matrix B (Jacobian_2) transposed.
     nRows = idxOpt.size();
@@ -189,53 +150,50 @@ public:
       //
       if (H21 != ROL::nullPtr) {
         numEntries = H21->getNumEntriesInGlobalRow(idxOpt[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H21->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
-        sysGraph->insertGlobalIndices(i+offsetOpt, indices);
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);;
+        H21->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
+        sysGraph->insertGlobalIndices(i+offsetOpt, indices.size(), indices.data());
       }
       //
       if (H22 != ROL::nullPtr) {
         numEntries = H22->getNumEntriesInGlobalRow(idxOpt[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H22->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
-        Teuchos::Array<GO> indicesShifted(indices);
-        for (SZ j=0; j<indicesShifted.size(); ++j) {
-          indicesShifted[j] += offsetOpt;
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H22->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
+        for (size_t j=0; j<numEntries; ++j) {
+          indices(j) += offsetOpt;
         }
-        sysGraph->insertGlobalIndices(i+offsetOpt, indicesShifted);
+        sysGraph->insertGlobalIndices(i+offsetOpt, indices.size(), indices.data());
       }
       //
       numEntries = B_trans->getNumEntriesInGlobalRow(idxOpt[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      B_trans->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetRes;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      B_trans->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetRes;
       }
-      sysGraph->insertGlobalIndices(i+offsetOpt, indicesShifted());
+      sysGraph->insertGlobalIndices(i+offsetOpt, indices.size(), indices.data());
     }
     // Insert indices of matrix A (Jacobian_1) and matrix B (Jacobian_2).
     nRows = idxRes.size();
     for (LO i=0; i<nRows; ++i) {
       //
       numEntries = A->getNumEntriesInGlobalRow(idxRes[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      A->getGlobalRowCopy(idxRes[i], indices(), values(), numEntries);
-      sysGraph->insertGlobalIndices(i+offsetRes, indices);
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      A->getGlobalRowCopy(idxRes[i], indices, values, numEntries);
+      sysGraph->insertGlobalIndices(i+offsetRes, indices.size(), indices.data());
       //
       numEntries = B->getNumEntriesInGlobalRow(idxRes[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      B->getGlobalRowCopy(idxRes[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetOpt;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      B->getGlobalRowCopy(idxRes[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetOpt;
       }
-      sysGraph->insertGlobalIndices(i+offsetRes, indicesShifted());
+      sysGraph->insertGlobalIndices(i+offsetRes, indices.size(), indices.data());
     }
 
     // Fill-complete the graph.
@@ -251,33 +209,31 @@ public:
       //
       if (H11 != ROL::nullPtr) {
         numEntries = H11->getNumEntriesInGlobalRow(idxSim[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H11->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H11->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
         sysMat->replaceGlobalValues(i+offsetSim, indices, values);
       }
       //
       if (H12 != ROL::nullPtr) {
         numEntries = H12->getNumEntriesInGlobalRow(idxSim[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H12->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
-        Teuchos::Array<GO> indicesShifted(indices);
-        for (SZ j=0; j<indicesShifted.size(); ++j) {
-          indicesShifted[j] += offsetOpt;
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H12->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
+        for (size_t j=0; j<numEntries; ++j) {
+          indices(j) += offsetOpt;
         }
-        sysMat->replaceGlobalValues(i+offsetSim, indicesShifted, values);
+        sysMat->replaceGlobalValues(i+offsetSim, indices, values);
       }
       //
       numEntries = A_trans->getNumEntriesInGlobalRow(idxSim[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      A_trans->getGlobalRowCopy(idxSim[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetRes;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      A_trans->getGlobalRowCopy(idxSim[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetRes;
       }
-      sysMat->replaceGlobalValues(i+offsetSim, indicesShifted(), values);
+      sysMat->replaceGlobalValues(i+offsetSim, indices, values);
     }
     // Insert values of matrix H21 (Hessian_21), matrix H22 (Hessian_22) and matrix B (Jacobian_2) transposed.
     nRows = idxOpt.size();
@@ -285,53 +241,50 @@ public:
       //
       if (H21 != ROL::nullPtr) {
         numEntries = H21->getNumEntriesInGlobalRow(idxOpt[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H21->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H21->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
         sysMat->replaceGlobalValues(i+offsetOpt, indices, values);
       }
       //
       if (H22 != ROL::nullPtr) {
         numEntries = H22->getNumEntriesInGlobalRow(idxOpt[i]);
-        indices.resize(numEntries);
-        values.resize(numEntries);
-        H22->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
-        Teuchos::Array<GO> indicesShifted(indices);
-        for (SZ j=0; j<indicesShifted.size(); ++j) {
-          indicesShifted[j] += offsetOpt;
+        Kokkos::resize(indices,numEntries);
+        Kokkos::resize(values,numEntries);
+        H22->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
+        for (size_t j=0; j<numEntries; ++j) {
+          indices(j) += offsetOpt;
         }
-        sysMat->replaceGlobalValues(i+offsetOpt, indicesShifted, values);
+        sysMat->replaceGlobalValues(i+offsetOpt, indices, values);
       }
       //
       numEntries = B_trans->getNumEntriesInGlobalRow(idxOpt[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      B_trans->getGlobalRowCopy(idxOpt[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetRes;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      B_trans->getGlobalRowCopy(idxOpt[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetRes;
       }
-      sysMat->replaceGlobalValues(i+offsetOpt, indicesShifted(), values);
+      sysMat->replaceGlobalValues(i+offsetOpt, indices, values);
     }
     // Insert values of matrix A (Jacobian_1) and matrix B (Jacobian_2).
     nRows = idxRes.size();
     for (LO i=0; i<nRows; ++i) {
       //
       numEntries = A->getNumEntriesInGlobalRow(idxRes[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      A->getGlobalRowCopy(idxRes[i], indices(), values(), numEntries);
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      A->getGlobalRowCopy(idxRes[i], indices, values, numEntries);
       sysMat->replaceGlobalValues(i+offsetRes, indices, values);
       //
       numEntries = B->getNumEntriesInGlobalRow(idxRes[i]);
-      indices.resize(numEntries);
-      values.resize(numEntries);
-      B->getGlobalRowCopy(idxRes[i], indices(), values(), numEntries);
-      Teuchos::Array<GO> indicesShifted(indices);
-      for (SZ j=0; j<indicesShifted.size(); ++j) {
-        indicesShifted[j] += offsetOpt;
+      Kokkos::resize(indices,numEntries);
+      Kokkos::resize(values,numEntries);
+      B->getGlobalRowCopy(idxRes[i], indices, values, numEntries);
+      for (size_t j=0; j<numEntries; ++j) {
+        indices(j) += offsetOpt;
       }
-      sysMat->replaceGlobalValues(i+offsetRes, indicesShifted(), values);
+      sysMat->replaceGlobalValues(i+offsetRes, indices, values);
     }
 
     // Fill-complete the matrix.
@@ -350,9 +303,9 @@ public:
     ROL::Ptr<const Tpetra::Map<> > mapRes = vecRes->getMap();
 
     // Get individual indices.
-    Teuchos::ArrayView<const GO> idxSim = mapSim->getNodeElementList(); 
-    Teuchos::ArrayView<const GO> idxOpt = mapOpt->getNodeElementList(); 
-    Teuchos::ArrayView<const GO> idxRes = mapRes->getNodeElementList();
+    Teuchos::ArrayView<const GO> idxSim = mapSim->getLocalElementList();
+    Teuchos::ArrayView<const GO> idxOpt = mapOpt->getLocalElementList();
+    Teuchos::ArrayView<const GO> idxRes = mapRes->getLocalElementList();
 
     // Get communicator.
     ROL::Ptr<const Teuchos::Comm<int> > comm = mapSim->getComm();

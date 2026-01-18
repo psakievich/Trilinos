@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  traction.hpp
@@ -63,8 +29,8 @@ private:
   std::vector<int> sidesets_, sideids_;
   std::vector<Real> loadMagnitude_;
   std::vector<Real> loadPolar_, loadAzimuth_;
-  std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real> > > > bdryCellNodes_;
-  std::vector<std::vector<std::vector<int> > > bdryCellLocIds_;
+  std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>> bdryCellNodes_;
+  std::vector<std::vector<std::vector<int>>> bdryCellLocIds_;
   int dim_, offset_;
 
 protected:
@@ -148,6 +114,15 @@ public:
       loadPolar_.clear();
       loadAzimuth_.clear();
     }
+    else if (ex == "3D L Beam") {
+      dim_ = 3;
+      offset_ = 0;
+      sidesets_.push_back(1);
+      sideids_.push_back(1);
+      loadMagnitude_.push_back(static_cast<Real>(100));
+      loadPolar_.push_back(static_cast<Real>(270));
+      loadAzimuth_.push_back(static_cast<Real>(90));
+    }
     else {
       if (parlist.isSublist("Traction")) {
         // Grab problem dimension
@@ -204,8 +179,8 @@ public:
     return (sidesets_.size()==0);
   }
 
-  void setCellNodes(const std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real> > > > &bdryCellNodes,
-                    const std::vector<std::vector<std::vector<int> > > &bdryCellLocIds) {
+  void setCellNodes(const std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>> &bdryCellNodes,
+                    const std::vector<std::vector<std::vector<int>>> &bdryCellLocIds) {
     bdryCellNodes_  = bdryCellNodes;
     bdryCellLocIds_ = bdryCellLocIds;
   }
@@ -254,26 +229,29 @@ public:
     return val;
   }
 
-  void compute(std::vector<std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real> > > > > &traction,
-               const std::vector<std::vector<ROL::Ptr<FE<Real> > > >                               &fe,
-               const std::vector<Real>                                                                 &param,
-               const Real                                                                               scale = 1) const {
+  void compute(std::vector<std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>>> &traction,
+               const std::vector<std::vector<ROL::Ptr<FE<Real>>>>                              &fe,
+               const std::vector<Real>                                                         &param,
+               const Real                                                                       scale = Real(1)) const {
     traction.clear();
     traction.resize(bdryCellLocIds_.size());
     const int numSideSets = sidesets_.size();
     if (numSideSets > 0) {
       for (int i = 0; i < numSideSets; ++i) {
-        traction[sidesets_[i]].resize(bdryCellLocIds_[sidesets_[i]].size());
-        const int numCellsSide = bdryCellLocIds_[sidesets_[i]][sideids_[i]].size();
-        if (numCellsSide > 0) {
-          traction[sidesets_[i]][sideids_[i]].resize(dim_);
-          const int numCubPerSide = fe[0][0]->gradN()->dimension(2);
-          for (int k = 0; k < dim_; ++k) {
-            traction[sidesets_[i]][sideids_[i]][k]
-              = ROL::makePtr<Intrepid::FieldContainer<Real>>(numCellsSide, numCubPerSide);
-            for (int c = 0; c < numCellsSide; ++c) {
-              for (int p = 0; p < numCubPerSide; ++p) {
-                (*traction[sidesets_[i]][sideids_[i]][k])(c,p) = scale*evaluate(k,i,param);
+        const int numLocalSideIds = bdryCellLocIds_[sidesets_[i]].size();
+        traction[sidesets_[i]].resize(numLocalSideIds);
+        for (int j = 0; j < numLocalSideIds; ++j) {
+          const int numCellsSide = bdryCellLocIds_[sidesets_[i]][j].size();
+          if (numCellsSide > 0) {
+            const int numCubPerSide = fe[sidesets_[i]][j]->cubPts()->dimension(1);
+            traction[sidesets_[i]][j].resize(dim_);
+            for (int k = 0; k < dim_; ++k) {
+              traction[sidesets_[i]][j][k]
+                = ROL::makePtr<Intrepid::FieldContainer<Real>>(numCellsSide, numCubPerSide);
+              for (int c = 0; c < numCellsSide; ++c) {
+                for (int p = 0; p < numCubPerSide; ++p) {
+                  (*traction[sidesets_[i]][j][k])(c,p) = scale*evaluate(k,i,param);
+                }
               }
             }
           }
@@ -282,34 +260,37 @@ public:
     }
   }
 
-  void apply(std::vector<ROL::Ptr<Intrepid::FieldContainer<Real> > > &R,
-             const std::vector<std::vector<ROL::Ptr<FE<Real> > > >   &fe,
-             const std::vector<Real>                                     &param,
-             const Real                                                   scale = 1) const {
+  void apply(std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>> &R,
+             const std::vector<std::vector<ROL::Ptr<FE<Real>>>>    &fe,
+             const std::vector<Real>                               &param,
+             const Real                                             scale = Real(1)) const {
     const int numSideSets = sidesets_.size();
     const int nf          = R[0]->dimension(1);
     if (numSideSets > 0) {
       for (int i = 0; i < numSideSets; ++i) {
-        const int numCellsSide = bdryCellLocIds_[sidesets_[i]][sideids_[i]].size();
-        if (numCellsSide > 0) {
-          const int numCubPerSide = fe[0][0]->gradN()->dimension(2);
-          for (int k = 0; k < dim_; ++k) {
-            Intrepid::FieldContainer<Real> traction(numCellsSide, numCubPerSide);
-            for (int c = 0; c < numCellsSide; ++c) {
-              for (int p = 0; p < numCubPerSide; ++p) {
-                traction(c,p) = scale*evaluate(k,i,param);
+        const int numLocalSideIds = bdryCellLocIds_[sidesets_[i]].size();
+        for (int j = 0; j < numLocalSideIds; ++j) {
+          const int numCellsSide = bdryCellLocIds_[sidesets_[i]][j].size();
+          if (numCellsSide > 0) {
+            const int numCubPerSide = fe[sidesets_[i]][j]->cubPts()->dimension(1);
+            for (int k = 0; k < dim_; ++k) {
+              Intrepid::FieldContainer<Real> traction(numCellsSide, numCubPerSide);
+              for (int c = 0; c < numCellsSide; ++c) {
+                for (int p = 0; p < numCubPerSide; ++p) {
+                  traction(c,p) = scale*evaluate(k,i,param);
+                }
               }
-            }
-            Intrepid::FieldContainer<Real> tractionResidual(numCellsSide, nf);
-            Intrepid::FunctionSpaceTools::integrate<Real>(tractionResidual,
-                                                          traction,
-                                                          *(fe[sidesets_[i]][sideids_[i]]->NdetJ()),
-                                                          Intrepid::COMP_CPP, false);
-            // Add Robin residual to volume residual
-            for (int l = 0; l < numCellsSide; ++l) {
-              int cidx = bdryCellLocIds_[sidesets_[i]][sideids_[i]][l];
-              for (int m = 0; m < nf; ++m) { 
-                (*R[k])(cidx,m) += tractionResidual(l,m);
+              Intrepid::FieldContainer<Real> tractionResidual(numCellsSide, nf);
+              Intrepid::FunctionSpaceTools::integrate<Real>(tractionResidual,
+                                                            traction,
+                                                            *fe[sidesets_[i]][j]->NdetJ(),
+                                                            Intrepid::COMP_CPP, false);
+              // Add traction residual to volume residual
+              for (int l = 0; l < numCellsSide; ++l) {
+                int cidx = bdryCellLocIds_[sidesets_[i]][j][l];
+                for (int m = 0; m < nf; ++m) {
+                  (*R[k])(cidx,m) += tractionResidual(l,m);
+                }
               }
             }
           }

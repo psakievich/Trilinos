@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_01.cpp
@@ -47,8 +13,7 @@
 
 #include "Teuchos_Comm.hpp"
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 #include "Tpetra_Core.hpp"
 #include "Tpetra_Version.hpp"
@@ -57,7 +22,7 @@
 #include <algorithm>
 
 #include "ROL_Reduced_Objective_SimOpt.hpp"
-#include "ROL_OptimizationSolver.hpp"
+#include "ROL_Solver.hpp"
 
 #include "../TOOLS/meshreader.hpp"
 #include "../TOOLS/linearpdeconstraint.hpp"
@@ -108,8 +73,8 @@ int main(int argc, char *argv[]) {
   ROL::nullstream bhs; // outputs nothing
 
   /*** Initialize communicator. ***/
-  Teuchos::GlobalMPISession mpiSession (&argc, &argv, &bhs);
-  ROL::Ptr<const Teuchos::Comm<int> > comm
+  ROL::GlobalMPISession mpiSession (&argc, &argv, &bhs);
+  ROL::Ptr<const Teuchos::Comm<int>> comm
     = Tpetra::getDefaultComm();
   const int myRank = comm->getRank();
   if ((iprint > 0) && (myRank == 0)) {
@@ -130,7 +95,7 @@ int main(int argc, char *argv[]) {
 
     /*** Initialize main data structure. ***/
     int probDim = parlist->sublist("Problem").get("Problem Dimension",2);
-    ROL::Ptr<MeshManager<RealT> > meshMgr;
+    ROL::Ptr<MeshManager<RealT>> meshMgr;
     if (probDim == 1) {
       meshMgr = ROL::makePtr<MeshManager_Interval<RealT>>(*parlist);
     } else if (probDim == 2) {
@@ -143,26 +108,26 @@ int main(int argc, char *argv[]) {
         ">>> PDE-OPT/poisson/example_01.cpp: Problem dim is not 1, 2 or 3!");
     }
     // Initialize PDE describe Poisson's equation
-    ROL::Ptr<PDE_Poisson<RealT> > pde
-      = ROL::makePtr<PDE_Poisson<RealT>>(*parlist);
-    ROL::Ptr<ROL::Constraint_SimOpt<RealT> > con
-      = ROL::makePtr<Linear_PDE_Constraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
+    ROL::Ptr<PDE_Poisson<RealT>>
+      pde = ROL::makePtr<PDE_Poisson<RealT>>(*parlist);
+    ROL::Ptr<ROL::Constraint_SimOpt<RealT>>
+      con = ROL::makePtr<Linear_PDE_Constraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
     // Cast the constraint and get the assembler.
-    ROL::Ptr<Linear_PDE_Constraint<RealT> > pdecon
-      = ROL::dynamicPtrCast<Linear_PDE_Constraint<RealT> >(con);
-    ROL::Ptr<Assembler<RealT> > assembler = pdecon->getAssembler();
+    ROL::Ptr<Linear_PDE_Constraint<RealT>>
+      pdecon = ROL::dynamicPtrCast<Linear_PDE_Constraint<RealT>>(con);
+    ROL::Ptr<Assembler<RealT>> assembler = pdecon->getAssembler();
     // Initialize quadratic objective function
-    std::vector<ROL::Ptr<QoI<RealT> > > qoi_vec(2,ROL::nullPtr);
+    std::vector<ROL::Ptr<QoI<RealT>>> qoi_vec(2,ROL::nullPtr);
     qoi_vec[0] = ROL::makePtr<QoI_L2Tracking_Poisson<RealT>>(pde->getFE());
     qoi_vec[1] = ROL::makePtr<QoI_L2Penalty_Poisson<RealT>>(pde->getFE());
     RealT alpha = parlist->sublist("Problem").get("Control penalty parameter",1e-2);
     std::vector<RealT> wt(2); wt[0] = static_cast<RealT>(1); wt[1] = alpha;
-    ROL::Ptr<ROL::Objective_SimOpt<RealT> > obj
-      = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,wt,assembler);
+    ROL::Ptr<ROL::Objective_SimOpt<RealT>>
+      obj = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,wt,assembler);
 
     // Create state vector and set to zeroes
-    ROL::Ptr<Tpetra::MultiVector<> > u_ptr, z_ptr, p_ptr, r_ptr;
-    ROL::Ptr<ROL::Vector<RealT> > up, zp, pp, rp;
+    ROL::Ptr<Tpetra::MultiVector<>> u_ptr, z_ptr, p_ptr, r_ptr;
+    ROL::Ptr<ROL::Vector<RealT>> up, zp, pp, rp;
     u_ptr  = assembler->createStateVector();   u_ptr->putScalar(0.0);
     z_ptr  = assembler->createControlVector(); z_ptr->putScalar(0.0);
     p_ptr  = assembler->createStateVector();   p_ptr->putScalar(0.0);
@@ -173,16 +138,17 @@ int main(int argc, char *argv[]) {
     rp  = ROL::makePtr<PDE_DualSimVector<RealT>>(r_ptr,pde,assembler);
 
     // Initialize reduced objective function
-    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT> > robj
-      = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(obj, con, up, zp, pp);
+    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT>>
+      robj = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(obj, con, up, zp, pp);
 
     // Build optimization problem and check derivatives
-    ROL::OptimizationProblem<RealT> optProb(robj,zp);
-    optProb.check(*outStream);
+    ROL::Ptr<ROL::Problem<RealT>>
+      optProb = ROL::makePtr<ROL::Problem<RealT>>(robj,zp);
+    optProb->check(true,*outStream);
 
     // Build optimization solver and solve
     zp->zero(); up->zero(); pp->zero();
-    ROL::OptimizationSolver<RealT> optSolver(optProb,*parlist);
+    ROL::Solver<RealT> optSolver(optProb,*parlist);
     std::clock_t timerTR = std::clock();
     optSolver.solve(*outStream);
     *outStream << "Trust Region Time: "
@@ -192,12 +158,12 @@ int main(int argc, char *argv[]) {
     // Compute solution error
     RealT tol(1.e-8);
     con->solve(*rp,*up,*zp,tol);
-    ROL::Ptr<Solution<RealT> > usol
-      = ROL::makePtr<stateSolution<RealT>>();
+    ROL::Ptr<Solution<RealT>>
+      usol = ROL::makePtr<stateSolution<RealT>>();
     RealT uerr = assembler->computeStateError(u_ptr,usol);
     *outStream << "State Error: " << uerr << std::endl;
-    ROL::Ptr<Solution<RealT> > zsol
-      = ROL::makePtr<controlSolution<RealT>>(alpha);
+    ROL::Ptr<Solution<RealT>>
+      zsol = ROL::makePtr<controlSolution<RealT>>(alpha);
     RealT zerr = assembler->computeControlError(z_ptr,zsol);
     *outStream << "Control Error: " << zerr << std::endl;
 
@@ -212,7 +178,7 @@ int main(int argc, char *argv[]) {
     // Get a summary from the time monitor.
     Teuchos::TimeMonitor::summarize();
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

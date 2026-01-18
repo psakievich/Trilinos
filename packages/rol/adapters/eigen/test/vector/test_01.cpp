@@ -1,9 +1,18 @@
+// @HEADER
+// *****************************************************************************
+//               Rapid Optimization Library (ROL) Package
+//
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
+
 #include "ROL_EigenVector.hpp"
 
 #include "ROL_RandomVector.hpp"
 #include "ROL_StdVector.hpp"
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 #include <iostream>
 
@@ -17,16 +26,16 @@ int main(int argc, char *argv[]) {
   using E3V = ROL::Eigen3Vector<RealT>;
   using EigenVector = Eigen::Matrix<RealT,Eigen::Dynamic,1>;
  
-  Teuchos::GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   int iprint     = argc - 1;
   ROL::Ptr<std::ostream> outStream;
   ROL::nullstream bhs; // outputs nothing
   if (iprint > 0)
-    ROL::makePtrFromRef(std::cout);
+    outStream = ROL::makePtrFromRef(std::cout);
   else
-    ROL::makePtrFromRef(bhs);
+    outStream = ROL::makePtrFromRef(bhs);
 
   int errorFlag  = 0;
 
@@ -96,7 +105,7 @@ int main(int argc, char *argv[]) {
     }
 
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_THYRAPRODUCTME_OBJECTIVE_H
@@ -50,7 +16,7 @@
 //#include "Thyra_DefaultProductVectorSpace.hpp"
 #include "Thyra_ProductVectorBase.hpp"
 #include <vector>
-#include <iostream>
+#include "Teuchos_VerbosityLevel.hpp"
 
 /** \class ROL::ThyraProductME_Objective
     \brief Implements the ROL::Objective interface for a Thyra Model Evaluator Objective.
@@ -62,14 +28,17 @@ template <class Real>
 class ThyraProductME_Objective : public Objective<Real> {
 public:
 
-  ThyraProductME_Objective(Thyra::ModelEvaluatorDefaultBase<double>& thyra_model_, int g_index_, const std::vector<int>& p_indices_,Teuchos::RCP<Teuchos::ParameterList> params_ = Teuchos::null) :
-    thyra_model(thyra_model_), g_index(g_index_), p_indices(p_indices_), params(params_) {
-    valueUpdated = gradientUpdated = false;
+  ThyraProductME_Objective(Thyra::ModelEvaluator<double>& thyra_model_, int g_index_, const std::vector<int>& p_indices_,
+      Teuchos::RCP<Teuchos::ParameterList> params_ = Teuchos::null, Teuchos::EVerbosityLevel verbLevel= Teuchos::VERB_HIGH) :
+    thyra_model(thyra_model_), g_index(g_index_), p_indices(p_indices_), params(params_),
+    out(Teuchos::VerboseObjectBase::getDefaultOStream()),
+    verbosityLevel(verbLevel) {
+    computeValue = computeGradient = true;
     value_ = 0;
-    x_ptr = Teuchos::null;
-    grad_ptr = Teuchos::null;
-    if(params != Teuchos::null)
+    if(Teuchos::nonnull(params)) {
       params->set<int>("Optimizer Iteration Number", -1);
+      params->set<bool>("Compute State", true);
+    }
   };
 
   /** \brief Compute value.
@@ -80,8 +49,22 @@ public:
   */
   Real value( const Vector<Real> &rol_x, Real &tol ) {
 
-    if(!x_hasChanged(rol_x) &&  valueUpdated)
-       return value_;
+#ifdef  HAVE_ROL_DEBUG
+    //x should be updated in the update function before calling value
+    TEUCHOS_ASSERT(!x_hasChanged(rol_x));
+#endif
+
+    if(verbosityLevel >= Teuchos::VERB_MEDIUM)
+      *out << "ROL::ThyraProductME_Objective::value" << std::endl;
+
+    if(!computeValue) {
+      if(verbosityLevel >= Teuchos::VERB_HIGH)
+      *out << "ROL::ThyraProductME_Objective::value, Skipping Value Computation" << std::endl;
+      return value_;
+    }
+
+    // Real norm = rol_x.norm();
+    // std::cout << "Value norm: " << norm << std::endl;
 
     const ThyraVector<Real>  & thyra_p = dynamic_cast<const ThyraVector<Real>&>(rol_x);
     Teuchos::RCP< Thyra::VectorBase<Real> > g = Thyra::createMember<Real>(thyra_model.get_g_space(g_index));
@@ -97,9 +80,12 @@ public:
 
     thyra_model.evalModel(inArgs, outArgs);
 
-    value_ = ::Thyra::get_ele(*g,0);
+    if ((params == Teuchos::null) || !params->isParameter("State Solve Converged") || params->get<bool>("State Solve Converged"))
+      value_ = ::Thyra::get_ele(*g,0);
+    else
+      value_ = 1.0e100;
 
-    valueUpdated = true;
+    computeValue = false;
 
     return value_;
   };
@@ -113,13 +99,22 @@ public:
   */
   void gradient( Vector<Real> &rol_g, const Vector<Real> &rol_x, Real &tol ) {
 
-    if( !x_hasChanged(rol_x) && gradientUpdated)
-      return rol_g.set(*grad_ptr);
+#ifdef  HAVE_ROL_DEBUG
+    //x should be updated in the update function before calling value
+    TEUCHOS_ASSERT(!x_hasChanged(rol_x));
+#endif
 
-    if(params != Teuchos::null) {
-      params->set<bool>("Update Functional", !valueUpdated);
-      params->set<bool>("Update Functional Gradient", !gradientUpdated);
+    if(verbosityLevel >= Teuchos::VERB_MEDIUM)
+      *out << "ROL::ThyraProductME_Objective::gradient" << std::endl;
+
+    if(!computeGradient) {
+      if(verbosityLevel >= Teuchos::VERB_HIGH)
+        *out << "ROL::ThyraProductME_Objective::gradient, Skipping Gradient Computation" << std::endl;
+      return rol_g.set(*grad_ptr_);
     }
+
+    // Real norm = rol_x.norm();
+    // std::cout << "In Gradient, Value norm: " << norm << std::endl;
 
     const ThyraVector<Real>  & thyra_p = dynamic_cast<const ThyraVector<Real>&>(rol_x);
     Teuchos::RCP<const  Thyra::ProductVectorBase<Real> > thyra_prodvec_p = Teuchos::rcp_dynamic_cast<const Thyra::ProductVectorBase<Real>>(thyra_p.getVector());
@@ -137,7 +132,9 @@ public:
 
     Teuchos::RCP< Thyra::VectorBase<Real> > g;
 
-    if(!valueUpdated) {
+    if(computeValue) {
+      if(verbosityLevel >= Teuchos::VERB_HIGH)
+        *out << "ROL::ThyraProductME_Objective::gradient, Computing Value" << std::endl;
       g = Thyra::createMember<Real>(thyra_model.get_g_space(g_index));
       outArgs.set_g(g_index, g);
     }
@@ -159,53 +156,62 @@ public:
     }
     thyra_model.evalModel(inArgs, outArgs);
 
-    if (grad_ptr == Teuchos::null)
-      grad_ptr = rol_g.clone();
-    grad_ptr->set(rol_g);
-
-    if(!valueUpdated) {
+    if(computeValue) {
       value_ = ::Thyra::get_ele(*g,0);
-      valueUpdated = true;
+      computeValue = false;
     }
-    gradientUpdated = true;
+    
+    if (grad_ptr_ == Teuchos::null)
+      grad_ptr_ = rol_g.clone();
+    grad_ptr_->set(rol_g);
+    
+    computeGradient = false;
   };
 
-  void update( const Vector<Real> & /*x*/, bool flag, int iter) {
-     if(params != Teuchos::null)
-       params->set<int>("Optimizer Iteration Number", iter);
-  }
-
-  bool x_hasChanged(const Vector<Real> &rol_x) {
-    if (x_ptr == Teuchos::null) {
-      x_ptr = rol_x.clone();
-      x_ptr->set(rol_x);
-      gradientUpdated = false;
-      valueUpdated = false;
-      return true;
+  void update( const Vector<Real> & x, bool flag = true, int iter = -1 ) {
+    if(Teuchos::nonnull(params)) {
+      params->set<int>("Optimizer Iteration Number", iter);
     }
-    else {
-      x_ptr->axpy( -1.0, rol_x );
-      Real norm = x_ptr->norm();
-      x_ptr->set(rol_x);
-      if (norm == 0) return false;
-      else {
-        gradientUpdated = false;
-        valueUpdated = false;
-        return true;
+
+    if(x_hasChanged(x)) {
+
+      if(verbosityLevel >= Teuchos::VERB_HIGH)
+        *out << "ROL::ThyraProductME_Objective::update, The Parameter Changed" << std::endl;
+      computeValue = computeGradient = true;
+
+      if(Teuchos::nonnull(params)) {
+        params->set<bool>("Compute State", true);
+        params->set<bool>("Optimization Variables Changed", true);
       }
     }
   }
+  
+  bool x_hasChanged(const Vector<Real> &rol_x) {
+    bool changed = true;
+    if (Teuchos::nonnull(rol_x_ptr)) {
+      rol_x_ptr->axpy( -1.0, rol_x );
+      Real norm = rol_x_ptr->norm();
+      changed = (norm == 0) ? false : true;
+    } else {
+      rol_x_ptr = rol_x.clone();
+    }
+    rol_x_ptr->set(rol_x);
+    return changed;
+  }  
 
 public:
-  bool gradientUpdated, valueUpdated;
+  bool computeValue, computeGradient;
 
 private:
-  Thyra::ModelEvaluatorDefaultBase<Real>& thyra_model;
+  Thyra::ModelEvaluator<Real>& thyra_model;
   const int g_index;
   const std::vector<int> p_indices;
   Real value_;
-  Teuchos::RCP<Vector<Real> > x_ptr, grad_ptr;
+  Teuchos::RCP<Vector<Real> > grad_ptr_;
+  Teuchos::RCP<Vector<Real> > rol_x_ptr;
   Teuchos::RCP<Teuchos::ParameterList> params;
+  Teuchos::RCP<Teuchos::FancyOStream> out;
+  Teuchos::EVerbosityLevel verbosityLevel;
 
 }; // class Objective
 

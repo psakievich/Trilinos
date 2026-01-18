@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_OBJECTIVE_SIMOPT_H
@@ -73,6 +39,14 @@ public:
     this->update(*(xs.get_1()),*(xs.get_2()),flag,iter);
   }
 
+  virtual void update( const Vector<Real> &u, const Vector<Real> &z, UpdateType type, int iter = -1 ) {}
+
+  void update( const Vector<Real> &x, UpdateType type, int iter = -1 ) {
+    const ROL::Vector_SimOpt<Real> &xs = dynamic_cast<const ROL::Vector_SimOpt<Real>&>(
+      dynamic_cast<const ROL::Vector<Real>&>(x));
+    this->update(*(xs.get_1()),*(xs.get_2()),type,iter);
+  }
+
 
   /** \brief Compute value.
   */
@@ -90,7 +64,7 @@ public:
   virtual void gradient_1( Vector<Real> &g, const Vector<Real> &u, const Vector<Real> &z, Real &tol ) {
     Real ftol  = std::sqrt(ROL_EPSILON<Real>());
     Real h     = 0.0;
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     Real v     = this->value(u,z,ftol);
     Real deriv = 0.0;
     ROL::Ptr<Vector<Real> > unew = u.clone();
@@ -99,18 +73,18 @@ public:
       h = u.dot(*u.basis(i))*tol;
       unew->set(u);
       unew->axpy(h,*(u.basis(i)));
-      this->update(*unew,z);
+      this->update(*unew,z,UpdateType::Temp);
       deriv = (this->value(*unew,z,ftol) - v)/h;
       g.axpy(deriv,*(g.basis(i)));
     }
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
   }
   /** \brief Compute gradient with respect to second component.
   */
   virtual void gradient_2( Vector<Real> &g, const Vector<Real> &u, const Vector<Real> &z, Real &tol ) {
     Real ftol  = std::sqrt(ROL_EPSILON<Real>());
     Real h     = 0.0;
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     Real v     = this->value(u,z,ftol);
     Real deriv = 0.0;
     ROL::Ptr<Vector<Real> > znew = z.clone();
@@ -119,11 +93,11 @@ public:
       h = z.dot(*z.basis(i))*tol;
       znew->set(z);
       znew->axpy(h,*(z.basis(i)));
-      this->update(u,*znew);
+      this->update(u,*znew,UpdateType::Temp);
       deriv = (this->value(u,*znew,ftol) - v)/h;
       g.axpy(deriv,*(g.basis(i)));
     }
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
   }
 
   void gradient( Vector<Real> &g, const Vector<Real> &x, Real &tol ) {
@@ -154,12 +128,12 @@ public:
     ROL::Ptr<Vector<Real> > unew = u.clone();
     unew->set(u);
     unew->axpy(h,v);
-    this->update(*unew,z);
+    this->update(*unew,z,UpdateType::Temp);
     hv.zero();
     this->gradient_1(hv,*unew,z,gtol);
     // Evaluate gradient of first component at (u,z)
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_1(*g,u,z,gtol);
     // Compute Newton quotient
     hv.axpy(-1.0,*g);
@@ -178,12 +152,12 @@ public:
     ROL::Ptr<Vector<Real> > znew = z.clone();
     znew->set(z);
     znew->axpy(h,v);
-    this->update(u,*znew);
+    this->update(u,*znew,UpdateType::Temp);
     hv.zero();
     this->gradient_1(hv,u,*znew,gtol);
     // Evaluate gradient of first component at (u,z)
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_1(*g,u,z,gtol);
     // Compute Newton quotient
     hv.axpy(-1.0,*g);
@@ -202,12 +176,12 @@ public:
     ROL::Ptr<Vector<Real> > unew = u.clone();
     unew->set(u);
     unew->axpy(h,v);
-    this->update(*unew,z);
+    this->update(*unew,z,UpdateType::Temp);
     hv.zero();
     this->gradient_2(hv,*unew,z,gtol);
     // Evaluate gradient of first component at (u,z)
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_2(*g,u,z,gtol);
     // Compute Newton quotient
     hv.axpy(-1.0,*g);
@@ -226,12 +200,12 @@ public:
     ROL::Ptr<Vector<Real> > znew = z.clone();
     znew->set(z);
     znew->axpy(h,v);
-    this->update(u,*znew);
+    this->update(u,*znew,UpdateType::Temp);
     hv.zero();
     this->gradient_2(hv,u,*znew,gtol);
     // Evaluate gradient of first component at (u,z)
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_2(*g,u,z,gtol);
     // Compute Newton quotient
     hv.axpy(-1.0,*g);
@@ -311,13 +285,14 @@ public:
     oldFormatState.copyfmt(outStream);
   
     // Evaluate objective value at x.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     Real val = this->value(u,z,tol);
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > gtmp = g.clone();
     this->gradient_1(*gtmp, u, z, tol);
-    Real dtg = d.dot(gtmp->dual());
+    //Real dtg = d.dot(gtmp->dual());
+    Real dtg = d.apply(*gtmp);
   
     // Temporary vectors.
     ROL::Ptr<Vector<Real> > unew = u.clone();
@@ -340,7 +315,7 @@ public:
   
         // Only evaluate at shifts where the weight is nonzero  
         if( weights[order-1][j+1] != 0 ) {
-          this->update(*unew,z);
+          this->update(*unew,z,UpdateType::Temp);
           gCheck[i][2] += weights[order-1][j+1] * this->value(*unew,z,tol);
         }
       }
@@ -431,13 +406,14 @@ public:
     oldFormatState.copyfmt(outStream);
   
     // Evaluate objective value at x.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     Real val = this->value(u,z,tol);
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > gtmp = g.clone();
     this->gradient_2(*gtmp, u, z, tol);
-    Real dtg = d.dot(gtmp->dual());
+    //Real dtg = d.dot(gtmp->dual());
+    Real dtg = d.apply(*gtmp);
   
     // Temporary vectors.
     ROL::Ptr<Vector<Real> > znew = z.clone();
@@ -460,7 +436,7 @@ public:
   
         // Only evaluate at shifts where the weight is nonzero  
         if( weights[order-1][j+1] != 0 ) {
-          this->update(u,*znew);
+          this->update(u,*znew,UpdateType::Temp);
           gCheck[i][2] += weights[order-1][j+1] * this->value(u,*znew,tol);
         }
       }
@@ -569,7 +545,7 @@ public:
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_1(*g, u, z, tol);
   
     // Compute (Hessian at x) times (vector v).
@@ -599,7 +575,7 @@ public:
   
           // Only evaluate at shifts where the weight is nonzero  
           if( weights[order-1][j+1] != 0 ) {
-              this->update(*unew,z);
+              this->update(*unew,z,UpdateType::Temp);
               this->gradient_1(*gnew, *unew, z, tol);
               gdif->axpy(weights[order-1][j+1],*gnew);
           }
@@ -713,7 +689,7 @@ public:
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_1(*g, u, z, tol);
   
     // Compute (Hessian at x) times (vector v).
@@ -743,7 +719,7 @@ public:
   
           // Only evaluate at shifts where the weight is nonzero  
           if( weights[order-1][j+1] != 0 ) {
-              this->update(u,*znew);
+              this->update(u,*znew,UpdateType::Temp);
               this->gradient_1(*gnew, u, *znew, tol);
               gdif->axpy(weights[order-1][j+1],*gnew);
           }
@@ -860,7 +836,7 @@ public:
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_2(*g, u, z, tol);
   
     // Compute (Hessian at x) times (vector v).
@@ -890,7 +866,7 @@ public:
   
           // Only evaluate at shifts where the weight is nonzero  
           if( weights[order-1][j+1] != 0 ) {
-              this->update(*unew,z);
+              this->update(*unew,z,UpdateType::Temp);
               this->gradient_2(*gnew, *unew, z, tol);
               gdif->axpy(weights[order-1][j+1],*gnew);
           }
@@ -1007,7 +983,7 @@ public:
   
     // Compute gradient at x.
     ROL::Ptr<Vector<Real> > g = hv.clone();
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->gradient_2(*g, u, z, tol);
   
     // Compute (Hessian at x) times (vector v).
@@ -1037,7 +1013,7 @@ public:
   
           // Only evaluate at shifts where the weight is nonzero  
           if( weights[order-1][j+1] != 0 ) {
-              this->update(u,*znew);
+              this->update(u,*znew,UpdateType::Temp);
               this->gradient_2(*gnew, u, *znew, tol);
               gdif->axpy(weights[order-1][j+1],*gnew);
           }

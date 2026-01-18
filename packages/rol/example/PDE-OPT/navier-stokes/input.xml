@@ -28,7 +28,7 @@
     <Parameter name="Step width"         type="double"  value="1.0" />
     <Parameter name="Step height"        type="double"  value="0.5" />
     <Parameter name="Observation width"  type="double"  value="3.0" />
-    <Parameter name="Refinement level"   type="int"     value="2"   />
+    <Parameter name="Refinement level"   type="int"     value="1"   />
     <Parameter name="Partition type"     type="int"     value="1"    />
   </ParameterList>
 
@@ -60,11 +60,11 @@
 
   <!-- ===========  SOL PARAMETER SUBLIST  =========== -->
   <ParameterList name="SOL">
-    <Parameter name="Stochastic Component Type" type="string" value="Risk Neutral" />
+    <Parameter name="Type" type="string" value="Risk Neutral" />
     <!--
-    <Parameter name="Stochastic Component Type" type="string" value="Mean Value"   />
-    <Parameter name="Stochastic Component Type" type="string" value="Risk Averse"  />
-    <Parameter name="Stochastic Component Type" type="string" value="Probability"  />
+    <Parameter name="Type" type="string" value="Mean Value"   />
+    <Parameter name="Type" type="string" value="Risk Averse"  />
+    <Parameter name="Type" type="string" value="Probability"  />
     -->
     <ParameterList name="Risk Measure">
       <Parameter name="Name" type="string" value="Entropic Risk" />
@@ -123,6 +123,7 @@
   <ParameterList name="General">
     <Parameter name="Variable Objective Function"            type="bool"   value="false" />
     <Parameter name="Scale for Epsilon Active Sets"          type="double" value="1.0"   />
+    <Parameter name="Output Level"                           type="int"    value="1"     />
     <!-- ===========  USE INEXACT OBJECTIVE OR DERIVATIVES  =========== -->
     <Parameter name="Inexact Objective Function"             type="bool" value="false" />
     <Parameter name="Inexact Gradient"                       type="bool" value="false" />
@@ -151,7 +152,7 @@
   <!-- ===========  STEP SUBLIST  =========== -->
   <ParameterList name="Step">
     <Parameter name="Type" type="string" value="Fletcher"/>
-    
+
     <!-- ===========  LINE SEARCH  =========== -->
     <ParameterList name="Line Search">
       <Parameter name="Function Evaluation Limit"      type="int"    value="20"    />
@@ -163,7 +164,7 @@
 
       <!-- ===========  DESCENT ALGORITHM SPECIFICATION  =========== -->
       <ParameterList name="Descent Method">
-        <Parameter name="Type"              type="string" value="Newton-Krylov"    /> 
+        <Parameter name="Type"              type="string" value="Newton-Krylov"    />
         <Parameter name="Nonlinear CG Type" type="string" value="Hestenes-Stiefel" />
       </ParameterList>
 

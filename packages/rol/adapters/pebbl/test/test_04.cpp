@@ -1,56 +1,21 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #include "test_01.hpp"
-#include "ROL_StdTransform_PEBBL.hpp"
-#include "ROL_TransformedConstraint_PEBBL.hpp"
-#include "ROL_TransformedObjective_PEBBL.hpp"
+#include "ROL_PEBBL_StdIntegerTransformation.hpp"
+#include "ROL_PEBBL_BuildTransformation.hpp"
 
 typedef double RealT;
 
 int main(int argc, char* argv[]) {
 
-  Teuchos::GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   int iprint = argc - 1;
@@ -99,7 +64,7 @@ int main(int argc, char* argv[]) {
     /************************* CONSTRUCT CONSTRAINT ***********************************************/
     /**********************************************************************************************/
     int budget = 3;
-    ROL::Ptr<ROL::Constraint<RealT> > econ
+    ROL::Ptr<ROL::Constraint<RealT>> econ
       = ROL::makePtr<Constraint_SimpleBinary<RealT>>(budget);
     /**********************************************************************************************/
     /************************* CONSTRUCT BOUND CONSTRAINT *****************************************/
@@ -113,9 +78,13 @@ int main(int argc, char* argv[]) {
     /**********************************************************************************************/
     /************************* SOLVE **************************************************************/
     /**********************************************************************************************/
-    ROL::OptimizationProblem<RealT> problem(obj,x,bnd,econ,emul);
-    problem.check(*outStream);
-    ROL::OptimizationSolver<RealT> solver(problem,*parlist);
+    ROL::Ptr<ROL::Problem<RealT>>
+      problem = ROL::makePtr<ROL::Problem<RealT>>(obj,x);
+    problem->addBoundConstraint(bnd);
+    problem->addLinearConstraint("Linear",econ,emul);
+    problem->finalize(false,true,*outStream);
+    problem->check(true,*outStream);
+    ROL::Solver<RealT> solver(problem,*parlist);
     *outStream << "Solve problem with no fixed binary variables"
                << std::endl << std::endl;
     clock_t start = clock();
@@ -136,8 +105,8 @@ int main(int argc, char* argv[]) {
     /**********************************************************************************************/
     /************************* ADD BINARY CONSTRAINTS AND SOLVE ***********************************/
     /**********************************************************************************************/
-    ROL::Ptr<ROL::Transform_PEBBL<RealT>> trans_bin
-      = ROL::makePtr<ROL::StdTransform_PEBBL<RealT>>();
+    ROL::Ptr<ROL::PEBBL::StdIntegerTransformation<RealT>> trans_bin
+      = ROL::makePtr<ROL::PEBBL::StdIntegerTransformation<RealT>>();
     std::map<int,RealT> fixed;
     fixed.insert(std::pair<int,RealT>(2,0.0));
     fixed.insert(std::pair<int,RealT>(5,0.0));
@@ -146,13 +115,17 @@ int main(int argc, char* argv[]) {
     trans_bin->add(fixed);
     RealT tol(1e-8);
     trans_bin->value(*xbin,*x,tol);
-    ROL::Ptr<ROL::TransformedConstraint_PEBBL<RealT>> econ_trans
-      = ROL::makePtr<ROL::TransformedConstraint_PEBBL<RealT>>(econ,trans_bin);
-    ROL::Ptr<ROL::TransformedObjective_PEBBL<RealT>> obj_trans
-      = ROL::makePtr<ROL::TransformedObjective_PEBBL<RealT>>(obj,trans_bin);
-    ROL::OptimizationProblem<RealT> problem_bin(obj_trans,xbin,bnd,econ_trans,emul);
-    problem_bin.check(*outStream);
-    ROL::OptimizationSolver<RealT> solver_bin(problem_bin,*parlist);
+    ROL::Ptr<ROL::PEBBL::BuildTransformation<RealT>> build
+      = ROL::makePtr<ROL::PEBBL::BuildTransformation<RealT>>(trans_bin,x);
+    ROL::Ptr<ROL::Objective<RealT>>   obj_trans = build->transform(obj);
+    ROL::Ptr<ROL::Constraint<RealT>> econ_trans = build->transform(econ);
+    ROL::Ptr<ROL::Problem<RealT>>
+      problem_bin = ROL::makePtr<ROL::Problem<RealT>>(obj_trans,xbin);
+    problem_bin->addBoundConstraint(bnd);
+    problem_bin->addLinearConstraint("Linear",econ_trans,emul);
+    problem_bin->finalize(false,true,*outStream);
+    problem_bin->check(true,*outStream);
+    ROL::Solver<RealT> solver_bin(problem_bin,*parlist);
     *outStream << "Solve problem with {2,5} set to 0 and {3,9} set to 1"
                << std::endl << std::endl;
     clock_t start_bin = clock();
@@ -171,12 +144,12 @@ int main(int argc, char* argv[]) {
     *outStream << "Sum(x) = " << sum_bin << "  Budget = " << budget;
     *outStream << std::endl << std::endl;
 
-    errorFlag += ((*xbin_ptr)[2]==0.0 ? 0 : 1);
-    errorFlag += ((*xbin_ptr)[5]==0.0 ? 0 : 1);
-    errorFlag += ((*xbin_ptr)[3]==1.0 ? 0 : 1);
-    errorFlag += ((*xbin_ptr)[9]==1.0 ? 0 : 1);
+    errorFlag += (std::abs((*xbin_ptr)[2]-0.0)<std::sqrt(ROL::ROL_EPSILON<RealT>()) ? 0 : 1);
+    errorFlag += (std::abs((*xbin_ptr)[5]-0.0)<std::sqrt(ROL::ROL_EPSILON<RealT>()) ? 0 : 1);
+    errorFlag += (std::abs((*xbin_ptr)[3]-1.0)<std::sqrt(ROL::ROL_EPSILON<RealT>()) ? 0 : 1);
+    errorFlag += (std::abs((*xbin_ptr)[9]-1.0)<std::sqrt(ROL::ROL_EPSILON<RealT>()) ? 0 : 1);
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

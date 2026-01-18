@@ -1,45 +1,11 @@
 
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_VECTOR_H
@@ -47,7 +13,8 @@
 
 #define ROL_UNUSED(x) (void) x
 
-#include <ostream>
+#include <iostream>
+#include <iomanip>
 #include <vector>
 #include <algorithm>
 
@@ -71,7 +38,7 @@
     a duality pairing (in general Banach space).
 
     There are additional virtual member functions that can be
-    overloaded for computational efficiency. 
+    overloaded for computational efficiency.
 */
 
 namespace ROL {
@@ -79,8 +46,8 @@ namespace ROL {
 template <class Real>
 class Vector
 #ifdef ENABLE_PYROL
- : public std::enable_shared_from_this<Vector<Real>> 
-#endif 
+ : public std::enable_shared_from_this<Vector<Real>>
+#endif
 {
 public:
 
@@ -134,7 +101,7 @@ public:
 
              Provides the means of allocating temporary memory in ROL.
 
-             ---             
+             ---
   */
   virtual ROL::Ptr<Vector> clone() const = 0;
 
@@ -227,23 +194,35 @@ public:
     return *this;
   }
 
+  /** \brief Apply \f$\mathtt{*this}\f$ to a dual vector.  This is equivalent
+             to the call \f$\mathtt{this->dot(x.dual())}\f$.
+
+             @param[in]     x      is a vector
+             @return         The number equal to \f$\langle \mathtt{*this}, x \rangle\f$.
+
+             ---
+  */
+  virtual Real apply(const Vector<Real> &x) const {
+    return this->dot(x.dual());
+  }
+
   virtual void applyUnary( const Elementwise::UnaryFunction<Real> &f ) {
     ROL_UNUSED(f);
     ROL_TEST_FOR_EXCEPTION( true, std::logic_error,
-      "The method applyUnary wass called, but not implemented" << std::endl); 
+      "The method applyUnary was called, but not implemented" << std::endl);
   }
 
   virtual void applyBinary( const Elementwise::BinaryFunction<Real> &f, const Vector &x ) {
     ROL_UNUSED(f);
     ROL_UNUSED(x);
     ROL_TEST_FOR_EXCEPTION( true, std::logic_error,
-      "The method applyBinary wass called, but not implemented" << std::endl); 
+      "The method applyBinary was called, but not implemented" << std::endl);
   }
 
   virtual Real reduce( const Elementwise::ReductionOp<Real> &r ) const {
     ROL_UNUSED(r);
     ROL_TEST_FOR_EXCEPTION( true, std::logic_error,
-      "The method reduce was called, but not implemented" << std::endl); 
+      "The method reduce was called, but not implemented" << std::endl);
   }
 
   virtual void print( std::ostream &outStream ) const {
@@ -303,6 +282,7 @@ public:
              - Additivity of dot (inner) product: \f$(\mathtt{*this}, x+y)  = (\mathtt{*this}, x) + (\mathtt{*this}, y)\f$.
              - Consistency of scalar multiplication and norm: \f$\|{\mathtt{*this}} / {\|\mathtt{*this}\|} \| = 1\f$.
              - Reflexivity: \f$\mbox{dual}(\mbox{dual}(\mathtt{*this})) = \mathtt{*this}\f$ .
+             - Consistency of apply and dual: \f$\langle \mathtt{*this}, x\rangle = (\mbox{dual}(\mathtt{*this}),x) = (\mathtt{*this},\mbox{dual}(x))\f$.
 
              The consistency errors are defined as the norms or absolute values of the differences between the left-hand
              side and the right-hand side terms in the above equalities.
@@ -408,7 +388,21 @@ public:
     xtmp = ROL::constPtrCast<Vector>(ROL::makePtrFromRef(this->dual()));
     ytmp = ROL::constPtrCast<Vector>(ROL::makePtrFromRef(xtmp->dual()));
     v->axpy(-one, *ytmp); vCheck.push_back(v->norm());
-    *pStream << std::setw(width) << std::left << "Reflexivity. Consistency error: " << " " << vCheck.back() << "\n\n";
+    *pStream << std::setw(width) << std::left << "Reflexivity. Consistency error: " << " " << vCheck.back() << "\n";
+
+    // Consistency of apply and dual.
+    v->set(*this);
+    xtmp = x.dual().clone(); xtmp->set(x.dual());
+    Real vx  = v->apply(*xtmp);
+    Real vxd = v->dot(xtmp->dual());
+    Real vdx = xtmp->dot(v->dual());
+    if (vx == zero) {
+      vCheck.push_back(std::max(std::abs(vx-vxd),std::abs(vx-vdx)));
+    }
+    else {
+      vCheck.push_back(std::max(std::abs(vx-vxd),std::abs(vx-vdx))/std::abs(vx));
+    }
+    *pStream << std::setw(width) << std::left << "Consistency of apply and dual:" << " " << vCheck.back() << "\n\n";
 
     //*pStream << "************   End verification of linear algebra.\n\n";
 

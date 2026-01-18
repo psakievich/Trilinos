@@ -1,46 +1,11 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
-
 
 #ifndef ROL_BOUNDFLETCHER_H
 #define ROL_BOUNDFLETCHER_H
@@ -67,6 +32,7 @@ private:
   Ptr<const Vector<Real> > upp_;
 
   using FletcherBase<Real>::penaltyParameter_;
+  using FletcherBase<Real>::quadPenaltyParameter_;
 
   // Evaluation counters
   using FletcherBase<Real>::nfval_;
@@ -83,6 +49,8 @@ private:
   using FletcherBase<Real>::c_;        // constraint value
   using FletcherBase<Real>::scaledc_;  // penaltyParameter_ * c_
   using FletcherBase<Real>::gL_;       // gradient of Lagrangian (g - A*y)
+
+  using FletcherBase<Real>::cnorm_;    // norm of constraint violation
 
   using FletcherBase<Real>::isValueComputed_;
   using FletcherBase<Real>::isGradientComputed_;
@@ -139,6 +107,9 @@ private:
   using FletcherBase<Real>::v1_;
   using FletcherBase<Real>::v2_;
   using FletcherBase<Real>::vv_;
+  using FletcherBase<Real>::w1_;
+  using FletcherBase<Real>::w2_;
+  using FletcherBase<Real>::ww_;
   using FletcherBase<Real>::b1_;
   using FletcherBase<Real>::b2_;
   using FletcherBase<Real>::bb_;
@@ -326,6 +297,10 @@ public:
       v2_ = conVec.dual().clone();
       vv_ = makePtr<PartitionedVector<Real>>(std::vector<Ptr<Vector<Real>> >({v1_, v2_}));
 
+      w1_ = optVec.dual().clone();
+      w2_ = conVec.dual().clone();
+      ww_ = makePtr<PartitionedVector<Real>>(std::vector<Ptr<Vector<Real>> >({w1_, w2_}));
+
       b1_ = optVec.dual().clone();
       b2_ = conVec.clone();
       bb_ = makePtr<PartitionedVector<Real>>(std::vector<Ptr<Vector<Real>> >({b1_, b2_}));
@@ -337,6 +312,7 @@ public:
       AugSolve_ = (0 < AugSolve_ && AugSolve_ < 2) ? AugSolve_ : 0; 
 
       penaltyParameter_ = sublist.get("Penalty Parameter", 1.0);
+      quadPenaltyParameter_ = sublist.get("Quadratic Penalty Parameter", 0.0);
 
       delta_ = sublist.get("Regularization Parameter", 0.0);
 
@@ -368,19 +344,28 @@ public:
   }
 
   Real value( const Vector<Real> &x, Real &tol ) {
-    if( isValueComputed_ )
+    if( isValueComputed_ && multSolverError_*cnorm_ <= tol) {
+      tol = multSolverError_*cnorm_;
       return fPhi_;
+    }
+
+    Real zero(0);
 
     // Reset tolerances
     Real origTol = tol;
     Real tol2 = origTol;
 
     FletcherBase<Real>::objValue(x, tol2); tol2 = origTol;
-    multSolverError_ = origTol / static_cast<Real>(2);
+    multSolverError_ = origTol / (static_cast<Real>(2) * std::max(static_cast<Real>(1), cnorm_));
     computeMultipliers(x, multSolverError_);
     tol = multSolverError_;
 
     fPhi_ = fval_ - c_->dot(y_->dual());
+
+    if( quadPenaltyParameter_ > zero ) {
+      fPhi_ = fPhi_ + Real(0.5)*quadPenaltyParameter_*(c_->dot(c_->dual()));
+    }
+
     isValueComputed_ = true;
 
     return fPhi_;
@@ -393,6 +378,8 @@ public:
       return;
     }
 
+    Real zero(0);
+
     // Reset tolerances
     Real origTol = tol;
     Real tol2 = origTol;
@@ -400,9 +387,11 @@ public:
     gradSolveError_ = origTol / static_cast<Real>(2);
     computeMultipliers(x, gradSolveError_);
 
+    bool refine = isGradientComputed_;
+
     switch( AugSolve_ ) {
       case 0: {
-        solveAugmentedSystem( *w_, *v_, *xzeros_, *c_, x, gradSolveError_ );
+        solveAugmentedSystem( *w_, *v_, *xzeros_, *c_, x, gradSolveError_, refine );
         gradSolveError_ += multSolverError_;
         tol = gradSolveError_;
 
@@ -424,7 +413,7 @@ public:
         break;
       }
       case 1: {
-        solveAugmentedSystem( *w_, *v_, *xzeros_, *c_, x, gradSolveError_ );
+        solveAugmentedSystem( *w_, *v_, *xzeros_, *c_, x, gradSolveError_, refine );
         gradSolveError_ += multSolverError_;
         tol = gradSolveError_;
 
@@ -449,11 +438,18 @@ public:
       }
     }
 
+    if( quadPenaltyParameter_ > zero ) {
+      con_->applyAdjointJacobian( *Tv_, *c_, x, tol2 ); tol2 = origTol;
+      gPhi_->axpy( quadPenaltyParameter_, *Tv_ );
+    }
+
     g.set(*gPhi_);
     isGradientComputed_ = true;
   }
 
   void hessVec( Vector<Real> &hv, const Vector<Real> &v, const Vector<Real> &x, Real &tol ) {
+    Real zero(0);
+
     // Reset tolerances
     Real origTol = tol;
     Real tol2 = origTol;
@@ -528,6 +524,15 @@ public:
         break;
       }
     }
+
+    if( quadPenaltyParameter_ > zero ) {
+      con_->applyJacobian( *b2_, v, x, tol2 ); tol2 = origTol;
+      con_->applyAdjointJacobian( *Tv_, *b2_, x, tol2 ); tol2 = origTol;
+      hv.axpy( quadPenaltyParameter_, *Tv_ );
+      con_->applyAdjointHessian( *Tv_, *c_, v, x, tol2); tol2 = origTol;
+      hv.axpy( -quadPenaltyParameter_, *Tv_ );
+    }
+
   }
 
   void solveAugmentedSystem(Vector<Real> &v1,
@@ -535,7 +540,8 @@ public:
                             const Vector<Real> &b1,
                             const Vector<Real> &b2,
                             const Vector<Real> &x,
-                            Real &tol) {
+                            Real &tol,
+                            bool refine = false) {
     // Ignore tol for now
     ROL::Ptr<LinearOperator<Real> > K;
     switch( AugSolve_ ) {
@@ -551,11 +557,22 @@ public:
     ROL::Ptr<LinearOperator<Real> > P
       = ROL::makePtr<AugSystemPrecond>(con_, makePtrFromRef(x));
 
-    v1_->set(v1);
-    v2_->set(v2);
-
     b1_->set(b1);
     b2_->set(b2);
+
+    if( refine ) {
+      // TODO: Make sure this tol is actually ok...
+      Real origTol = tol;
+      w1_->set(v1);
+      w2_->set(v2);
+      K->apply(*vv_, *ww_, tol); tol = origTol;
+
+      b1_->axpy( static_cast<Real>(-1), *v1_ );
+      b2_->axpy( static_cast<Real>(-1), *v2_ );
+    }
+
+    v1_->zero();
+    v2_->zero();
 
     // If inexact, change tolerance
     if( useInexact_ ) {
@@ -564,19 +581,31 @@ public:
 
     flagKrylov_ = 0;
     tol = krylov_->run(*vv_,*K,*bb_,*P,iterKrylov_,flagKrylov_);
-    v1.set(*v1_);
-    v2.set(*v2_);
+
+    if( refine ) {
+      v1.plus(*v1_);
+      v2.plus(*v2_);
+    } else {
+      v1.set(*v1_);
+      v2.set(*v2_);
+    }
   }
 
   void computeMultipliers(const Vector<Real>& x, const Real tol) {
     if( isMultiplierComputed_ && multSolverError_ <= tol) {
       return;
     }
-    Real tol2 = tol;
-    FletcherBase<Real>::objGrad(x, tol2); tol2 = tol;
-    FletcherBase<Real>::conValue(x, tol2); tol2 = tol;
-    computeQ(x);
-    computeDQ(x);
+
+    if( !isMultiplierComputed_ ) {
+      Real tol2 = tol;
+      FletcherBase<Real>::objGrad(x, tol2); tol2 = tol;
+      FletcherBase<Real>::conValue(x, tol2); tol2 = tol;
+      cnorm_ = c_->norm();
+      computeQ(x);
+      computeDQ(x);
+    }
+
+    bool refine = isMultiplierComputed_;
 
     switch( AugSolve_ ) {
       case 0: {
@@ -584,7 +613,7 @@ public:
         Qsg_->applyBinary(Elementwise::Multiply<Real>(), *Qsqrt_);
 
         multSolverError_ = tol;
-        solveAugmentedSystem(*QsgL_, *y_, *Qsg_, *scaledc_, x, multSolverError_);
+        solveAugmentedSystem(*QsgL_, *y_, *Qsg_, *scaledc_, x, multSolverError_, refine);
 
         gL_->set(*QsgL_);
         gL_->applyBinary(Elementwise::Divide<Real>(), *Qsqrt_);
@@ -594,7 +623,7 @@ public:
       }
       case 1: {
         multSolverError_ = tol;
-        solveAugmentedSystem(*gL_, *y_, *g_, *scaledc_, x, multSolverError_);
+        solveAugmentedSystem(*gL_, *y_, *g_, *scaledc_, x, multSolverError_, refine);
         QgL_->set(*gL_);
         QgL_->applyBinary(Elementwise::Multiply<Real>(), *Q_);
         break;

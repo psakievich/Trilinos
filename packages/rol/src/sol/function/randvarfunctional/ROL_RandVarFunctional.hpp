@@ -1,55 +1,23 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_RANDVARFUNCTIONAL_HPP
 #define ROL_RANDVARFUNCTIONAL_HPP
 
 #include "ROL_Vector.hpp"
+#include "ROL_Objective.hpp"
 #include "ROL_Ptr.hpp"
-#include "ROL_SampledScalar.hpp"
-#include "ROL_SampledVector.hpp"
+#include "ROL_SampleGenerator.hpp"
+#include "ROL_ScalarController.hpp"
+#include "ROL_VectorController.hpp"
 
-/** @ingroup stochastic_group 
+/** @ingroup stochastic_group
     \class ROL::RandVarFunctional
     \brief Provides the interface to implement any functional that maps a
            random variable to a (extended) real number.
@@ -80,10 +48,10 @@ class RandVarFunctional {
 private:
   bool storage_;
   bool storage_hessvec_;
-  Ptr<SampledScalar<Real>> value_storage_;
-  Ptr<SampledVector<Real>> gradient_storage_;
-  Ptr<SampledScalar<Real>> gradvec_storage_;
-  Ptr<SampledVector<Real>> hessvec_storage_;
+  Ptr<ScalarController<Real>> value_storage_;
+  Ptr<VectorController<Real>> gradient_storage_;
+  Ptr<ScalarController<Real>> gradvec_storage_;
+  Ptr<VectorController<Real>> hessvec_storage_;
 
 protected:
   Real val_;
@@ -141,7 +109,8 @@ protected:
       isComputed = gradvec_storage_->get(gv,point_);
     }
     if (!isComputed || !storage_hessvec_) {
-      gv = g.dot(v.dual());
+      //gv = g.dot(v.dual());
+      gv = g.apply(v);
       if (storage_hessvec_) {
         gradvec_storage_->set(gv,point_);
       }
@@ -181,10 +150,10 @@ public:
     storage_ = storage;
     if (storage) {
       if (value_storage_ == nullPtr) {
-        value_storage_    = makePtr<SampledScalar<Real>>();
+        value_storage_    = makePtr<ScalarController<Real>>();
       }
       if (gradient_storage_ == nullPtr) {
-        gradient_storage_ = makePtr<SampledVector<Real>>();
+        gradient_storage_ = makePtr<VectorController<Real>>();
       }
     }
   }
@@ -194,23 +163,23 @@ public:
     if (storage) {
       useStorage(storage);
       if (gradvec_storage_ == nullPtr) {
-        gradvec_storage_ = makePtr<SampledScalar<Real>>();
+        gradvec_storage_ = makePtr<ScalarController<Real>>();
       }
       if (hessvec_storage_ == nullPtr) {
-        hessvec_storage_ = makePtr<SampledVector<Real>>();
+        hessvec_storage_ = makePtr<VectorController<Real>>();
       }
     }
   }
 
-  virtual void setStorage(const Ptr<SampledScalar<Real>> &value_storage,
-                          const Ptr<SampledVector<Real>> &gradient_storage) {
+  virtual void setStorage(const Ptr<ScalarController<Real>> &value_storage,
+                          const Ptr<VectorController<Real>> &gradient_storage) {
     value_storage_    = value_storage;
     gradient_storage_ = gradient_storage;
     useStorage(true);
   }
 
-  virtual void setHessVecStorage(const Ptr<SampledScalar<Real>> &gradvec_storage,
-                                 const Ptr<SampledVector<Real>> &hessvec_storage) {
+  virtual void setHessVecStorage(const Ptr<ScalarController<Real>> &gradvec_storage,
+                                 const Ptr<VectorController<Real>> &hessvec_storage) {
     gradvec_storage_ = gradvec_storage;
     hessvec_storage_ = hessvec_storage;
     useHessVecStorage(true);
@@ -222,13 +191,23 @@ public:
   */
   virtual void resetStorage(bool flag = true) {
     if (storage_) {
-      value_storage_->update();
+      value_storage_->objectiveUpdate();
       if (flag) {
-        gradient_storage_->update();
+        gradient_storage_->objectiveUpdate();
         if (storage_hessvec_) {
-          gradvec_storage_->update();
-          hessvec_storage_->update();
+          gradvec_storage_->objectiveUpdate();
+          hessvec_storage_->objectiveUpdate();
         }
+      }
+    }
+  }
+  virtual void resetStorage(UpdateType type) {
+    if (storage_) {
+      value_storage_->objectiveUpdate(type);
+      gradient_storage_->objectiveUpdate(type);
+      if (storage_hessvec_) {
+        gradvec_storage_->objectiveUpdate(type);
+        hessvec_storage_->objectiveUpdate(type);
       }
     }
   }
@@ -250,8 +229,8 @@ public:
     val_ = zero; gv_ = zero;
     g_->zero(); hv_->zero(); dualVector_->zero();
     if (storage_hessvec_) {
-      gradvec_storage_->update();
-      hessvec_storage_->update();
+      gradvec_storage_->reset();
+      hessvec_storage_->reset();
     }
   }
 
@@ -267,7 +246,7 @@ public:
   */
   virtual Real computeStatistic(const Ptr<const std::vector<Real>> &xstat) const {
     Real stat(0);
-    if (xstat != nullPtr) {
+    if (xstat != nullPtr && !xstat->empty()) {
       stat = (*xstat)[0];
     }
     return stat;

@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_01.cpp
@@ -47,8 +13,7 @@
 
 #include "Teuchos_Comm.hpp"
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 #include "Tpetra_Core.hpp"
 #include "Tpetra_Version.hpp"
@@ -60,20 +25,15 @@
 #include "ROL_Algorithm.hpp"
 #include "ROL_Bounds.hpp"
 #include "ROL_Reduced_Objective_SimOpt.hpp"
-#include "ROL_MonteCarloGenerator.hpp"
-#include "ROL_OptimizationProblem.hpp"
-#include "ROL_TpetraTeuchosBatchManager.hpp"
+#include "ROL_Solver.hpp"
+#include "ROL_BoundConstraint_SimOpt.hpp"
 
 #include "../TOOLS/meshmanager.hpp"
 #include "../TOOLS/pdeconstraint.hpp"
 #include "../TOOLS/pdeobjective.hpp"
 #include "../TOOLS/pdevector.hpp"
-#include "../TOOLS/batchmanager.hpp"
 #include "pde_navier-stokes.hpp"
 #include "obj_navier-stokes.hpp"
-
-#include "ROL_OptimizationSolver.hpp"
-#include "ROL_BoundConstraint_SimOpt.hpp"
 
 typedef double RealT;
 
@@ -90,7 +50,7 @@ Real random(const Teuchos::Comm<int> &comm,
 }
 
 int main(int argc, char *argv[]) {
-//  feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
+  //feenableexcept(FE_DIVBYZERO | FE_INVALID | FE_OVERFLOW);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   int iprint     = argc - 1;
@@ -98,7 +58,7 @@ int main(int argc, char *argv[]) {
   ROL::nullstream bhs; // outputs nothing
 
   /*** Initialize communicator. ***/
-  Teuchos::GlobalMPISession mpiSession (&argc, &argv, &bhs);
+  ROL::GlobalMPISession mpiSession (&argc, &argv, &bhs);
   ROL::Ptr<const Teuchos::Comm<int> > comm
     = Tpetra::getDefaultComm();
   ROL::Ptr<const Teuchos::Comm<int> > serial_comm
@@ -198,8 +158,6 @@ int main(int argc, char *argv[]) {
       = ROL::makePtr<StdObjective_NavierStokes<RealT>>(*parlist);
     ROL::Ptr<ROL::Objective_SimOpt<RealT> > obj
       = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,std_obj,assembler);
-    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT> > objReduced
-      = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(obj, con, up, zp, pp, true, false);
 
     /*************************************************************************/
     /***************** BUILD BOUND CONSTRAINT ********************************/
@@ -217,9 +175,7 @@ int main(int argc, char *argv[]) {
     ROL::Ptr<ROL::BoundConstraint<RealT> > zbnd
       = ROL::makePtr<ROL::Bounds<RealT>>(zlop,zhip);
     bool useBounds = parlist->sublist("Problem").get("Use bounds", false);
-    if (!useBounds) {
-      zbnd->deactivate();
-    }
+    if (!useBounds) zbnd->deactivate();
     // State bounds
     ROL::Ptr<Tpetra::MultiVector<> > ulo_ptr = assembler->createStateVector();
     ROL::Ptr<Tpetra::MultiVector<> > uhi_ptr = assembler->createStateVector();
@@ -236,10 +192,6 @@ int main(int argc, char *argv[]) {
     ROL::Ptr<ROL::BoundConstraint<RealT> > bnd
       = ROL::makePtr<ROL::BoundConstraint_SimOpt<RealT>>(ubnd,zbnd);
 
-    /*************************************************************************/
-    /***************** BUILD            PROBLEM ******************************/
-    /*************************************************************************/
-    ROL::OptimizationProblem<RealT> opt(objReduced,zp,bnd);
 
     /*************************************************************************/
     /***************** RUN VECTOR AND DERIVATIVE CHECKS **********************/
@@ -255,9 +207,6 @@ int main(int argc, char *argv[]) {
       con->checkAdjointConsistencyJacobian(*dup,d,x,true,*outStream);
       con->checkInverseJacobian_1(*up,*up,*up,*zp,true,*outStream);
       con->checkInverseAdjointJacobian_1(*up,*up,*up,*zp,true,*outStream);
-      objReduced->checkGradient(*zp,*dzp,true,*outStream);
-      objReduced->checkHessVec(*zp,*dzp,true,*outStream);
-      opt.check(*outStream);
     }
 
     /*************************************************************************/
@@ -267,8 +216,12 @@ int main(int argc, char *argv[]) {
     up->setScalar(RealT(1));
     zp->randomize();//->setScalar(RealT(1));
     con->solve(*rp,*up,*zp,tol);    
-    ROL::OptimizationProblem<RealT> optProb(obj, makePtrFromRef(x), bnd, con, pp);
-    ROL::OptimizationSolver<RealT> optSolver(optProb, *parlist);
+    ROL::Ptr<ROL::Problem<RealT>>
+      optProb = ROL::makePtr<ROL::Problem<RealT>>(obj, makePtrFromRef(x));
+    optProb->addBoundConstraint(bnd);
+    optProb->addConstraint("PDE", con, pp);
+    optProb->finalize(false,true,*outStream);
+    ROL::Solver<RealT> optSolver(optProb, *parlist);
     optSolver.solve(*outStream);
     std::clock_t timer = std::clock();
     *outStream << "Optimization time: "
@@ -285,7 +238,7 @@ int main(int argc, char *argv[]) {
     *outStream << "Residual Norm: " << res[0] << std::endl << std::endl;
     errorFlag += (res[0] > 1.e-6 ? 1 : 0);
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try
