@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_02.cpp
@@ -47,8 +13,7 @@
 
 #include "Teuchos_Comm.hpp"
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 #include "Tpetra_Core.hpp"
 #include "Tpetra_Version.hpp"
@@ -56,12 +21,11 @@
 #include <iostream>
 #include <algorithm>
 
-#include "ROL_Algorithm.hpp"
-#include "ROL_UnaryFunctions.hpp"
 #include "ROL_Bounds.hpp"
 #include "ROL_Reduced_Objective_SimOpt.hpp"
 #include "ROL_MonteCarloGenerator.hpp"
-#include "ROL_OptimizationProblem.hpp"
+#include "ROL_StochasticProblem.hpp"
+#include "ROL_Solver.hpp"
 #include "ROL_TpetraTeuchosBatchManager.hpp"
 #include "ROL_CompositeConstraint_SimOpt.hpp"
 
@@ -95,10 +59,10 @@ int main(int argc, char *argv[]) {
   ROL::nullstream bhs; // outputs nothing
 
   /*** Initialize communicator. ***/
-  Teuchos::GlobalMPISession mpiSession (&argc, &argv, &bhs);
-  ROL::Ptr<const Teuchos::Comm<int> > comm
+  ROL::GlobalMPISession mpiSession (&argc, &argv, &bhs);
+  ROL::Ptr<const Teuchos::Comm<int>> comm
     = Tpetra::getDefaultComm();
-  ROL::Ptr<const Teuchos::Comm<int> > serial_comm
+  ROL::Ptr<const Teuchos::Comm<int>> serial_comm
     = ROL::makePtr<Teuchos::SerialComm<int>>();
   const int myRank = comm->getRank();
   if ((iprint > 0) && (myRank == 0)) {
@@ -118,31 +82,31 @@ int main(int argc, char *argv[]) {
     Teuchos::updateParametersFromXmlFile( filename, parlist.ptr() );
 
     /*** Initialize main data structure. ***/
-    ROL::Ptr<MeshManager<RealT> > meshMgr
-      = ROL::makePtr<MeshManager_Example02<RealT>>(*parlist);
+    ROL::Ptr<MeshManager<RealT>>
+      meshMgr = ROL::makePtr<MeshManager_Example02<RealT>>(*parlist);
     // Initialize PDE describe Poisson's equation
-    ROL::Ptr<PDE_Poisson_Boltzmann_ex02<RealT> > pde
-      = ROL::makePtr<PDE_Poisson_Boltzmann_ex02<RealT>>(*parlist);
-    ROL::Ptr<ROL::Constraint_SimOpt<RealT> > con
-      = ROL::makePtr<PDE_Constraint<RealT>>(pde,meshMgr,serial_comm,*parlist,*outStream);
-    ROL::Ptr<PDE_Constraint<RealT> > pdeCon
-      = ROL::dynamicPtrCast<PDE_Constraint<RealT> >(con);
-    ROL::Ptr<PDE_Doping<RealT> > pdeDoping
-      = ROL::makePtr<PDE_Doping<RealT>>(*parlist);
-    ROL::Ptr<ROL::Constraint_SimOpt<RealT> > conDoping
-      = ROL::makePtr<Linear_PDE_Constraint<RealT>>(pdeDoping,meshMgr,serial_comm,*parlist,*outStream,true);
-    const ROL::Ptr<Assembler<RealT> > assembler = pdeCon->getAssembler();
+    ROL::Ptr<PDE_Poisson_Boltzmann_ex02<RealT>>
+      pde = ROL::makePtr<PDE_Poisson_Boltzmann_ex02<RealT>>(*parlist);
+    ROL::Ptr<ROL::Constraint_SimOpt<RealT>>
+      con = ROL::makePtr<PDE_Constraint<RealT>>(pde,meshMgr,serial_comm,*parlist,*outStream);
+    ROL::Ptr<PDE_Constraint<RealT>>
+      pdeCon = ROL::dynamicPtrCast<PDE_Constraint<RealT>>(con);
+    ROL::Ptr<PDE_Doping<RealT>>
+      pdeDoping = ROL::makePtr<PDE_Doping<RealT>>(*parlist);
+    ROL::Ptr<ROL::Constraint_SimOpt<RealT>>
+      conDoping = ROL::makePtr<Linear_PDE_Constraint<RealT>>(pdeDoping,meshMgr,serial_comm,*parlist,*outStream,true);
+    const ROL::Ptr<Assembler<RealT>> assembler = pdeCon->getAssembler();
     assembler->printMeshData(*outStream);
     con->setSolveParameters(*parlist);
 
     /*************************************************************************/
     /***************** BUILD VECTORS *****************************************/
     /*************************************************************************/
-    ROL::Ptr<Tpetra::MultiVector<> >  u_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  p_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  r_ptr = assembler->createResidualVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  z_ptr = assembler->createControlVector();
-    ROL::Ptr<ROL::Vector<RealT> > up, pp, rp, zp;
+    ROL::Ptr<Tpetra::MultiVector<>> u_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> p_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> r_ptr = assembler->createResidualVector();
+    ROL::Ptr<Tpetra::MultiVector<>> z_ptr = assembler->createControlVector();
+    ROL::Ptr<ROL::Vector<RealT>> up, pp, rp, zp;
     u_ptr->randomize();  //u_ptr->putScalar(static_cast<RealT>(1));
     p_ptr->randomize();  //p_ptr->putScalar(static_cast<RealT>(1));
     r_ptr->randomize();  //r_ptr->putScalar(static_cast<RealT>(1));
@@ -156,7 +120,7 @@ int main(int argc, char *argv[]) {
     /***************** BUILD SAMPLER *****************************************/
     /*************************************************************************/
     int stochDim = 3;
-    std::vector<ROL::Ptr<ROL::Distribution<RealT> > > distVec(stochDim);
+    std::vector<ROL::Ptr<ROL::Distribution<RealT>>> distVec(stochDim);
     // Build lambda2 distribution
     Teuchos::ParameterList LvolList;
     LvolList.sublist("Distribution").set("Name","Uniform");
@@ -177,10 +141,10 @@ int main(int argc, char *argv[]) {
     distVec[2] = ROL::DistributionFactory<RealT>(dopeList);
     // Build sampler
     int nsamp = parlist->sublist("Problem").get("Number of Samples",100);
-    ROL::Ptr<ROL::BatchManager<RealT> > bman
-      = ROL::makePtr<ROL::TpetraTeuchosBatchManager<RealT>>(comm);
-    ROL::Ptr<ROL::SampleGenerator<RealT> > sampler
-      = ROL::makePtr<ROL::MonteCarloGenerator<RealT>>(nsamp,distVec,bman);
+    ROL::Ptr<ROL::BatchManager<RealT>>
+      bman = ROL::makePtr<ROL::TpetraTeuchosBatchManager<RealT>>(comm);
+    ROL::Ptr<ROL::SampleGenerator<RealT>>
+      sampler = ROL::makePtr<ROL::MonteCarloGenerator<RealT>>(nsamp,distVec,bman);
     // Print samples
     std::vector<RealT> sample(stochDim), Lmean(stochDim), Gmean(stochDim);
     std::stringstream name_samp;
@@ -202,20 +166,19 @@ int main(int argc, char *argv[]) {
     /*************************************************************************/
     /***************** BUILD REFERENCE DOPING AND POTENTIAL ******************/
     /*************************************************************************/
-    ROL::Ptr<Tpetra::MultiVector<> > ru_ptr = assembler->createStateVector();
-    ROL::Ptr<ROL::Vector<RealT> > rup
-      = ROL::makePtr<PDE_PrimalSimVector<RealT>>(ru_ptr,pde,assembler,*parlist);
-    ROL::Ptr<Tpetra::MultiVector<> > rz_ptr = assembler->createControlVector();
-    ROL::Ptr<ROL::Vector<RealT> > rzp
-      = ROL::makePtr<PDE_PrimalOptVector<RealT>>(rz_ptr,pde,assembler,*parlist);
-    ROL::Ptr<Doping<RealT> > dope
-      = ROL::makePtr<Doping<RealT>>(pde->getFE(), pde->getCellNodes(),
-                                       assembler->getDofManager()->getCellDofs(),
-                                       assembler->getCellIds(),*parlist);
+    ROL::Ptr<Tpetra::MultiVector<>> ru_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> rz_ptr = assembler->createControlVector();
+    ROL::Ptr<ROL::Vector<RealT>> rup, rzp;
+    rup = ROL::makePtr<PDE_PrimalSimVector<RealT>>(ru_ptr,pde,assembler,*parlist);
+    rzp = ROL::makePtr<PDE_PrimalOptVector<RealT>>(rz_ptr,pde,assembler,*parlist);
+    ROL::Ptr<Doping<RealT>>
+      dope = ROL::makePtr<Doping<RealT>>(pde->getFE(), pde->getCellNodes(),
+                                         assembler->getDofManager()->getCellDofs(),
+                                         assembler->getCellIds(),*parlist);
     // Initialize "filtered" of "unfiltered" constraint.
-    ROL::Ptr<ROL::Constraint_SimOpt<RealT> > pdeWithDoping
-      = ROL::makePtr<ROL::CompositeConstraint_SimOpt<RealT>>(con, conDoping,
-        *rp, *rp, *up, *zp, *zp, true, true);
+    ROL::Ptr<ROL::Constraint_SimOpt<RealT>>
+      pdeWithDoping = ROL::makePtr<ROL::CompositeConstraint_SimOpt<RealT>>(con,
+                      conDoping,*rp, *rp, *up, *zp, *zp, true, true);
     pdeWithDoping->setSolveParameters(*parlist);
     dope->build(rz_ptr);
     RealT tol(1.e-8);
@@ -227,20 +190,20 @@ int main(int argc, char *argv[]) {
     /*************************************************************************/
     /***************** BUILD COST FUNCTIONAL *********************************/
     /*************************************************************************/
-    std::vector<ROL::Ptr<QoI<RealT> > > qoi_vec(3,ROL::nullPtr);
+    std::vector<ROL::Ptr<QoI<RealT>>> qoi_vec(3,ROL::nullPtr);
     // Current flow over drain
-    qoi_vec[0] = ROL::makePtr<QoI_State_Cost_1_Poisson_Boltzmann<RealT>>(pde->getFE(),
-                                    pde->getBdryFE(),pde->getBdryCellLocIds(),*parlist);
-    ROL::Ptr<IntegralObjective<RealT> > stateObj
-      = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[0],assembler);
+    qoi_vec[0] = ROL::makePtr<QoI_State_Cost_1_Poisson_Boltzmann<RealT>>(
+                 pde->getFE(),pde->getBdryFE(),pde->getBdryCellLocIds(),*parlist);
+    ROL::Ptr<IntegralObjective<RealT>>
+      stateObj = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[0],assembler);
     // Deviation from reference doping
     qoi_vec[1] = ROL::makePtr<QoI_Control_Cost_1_Poisson_Boltzmann<RealT>>(pde->getFE(),dope);
-    ROL::Ptr<IntegralObjective<RealT> > ctrlObj1
-      = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[1],assembler);
+    ROL::Ptr<IntegralObjective<RealT>>
+      ctrlObj1 = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[1],assembler);
     // H1-Seminorm of doping
     qoi_vec[2] = ROL::makePtr<QoI_Control_Cost_2_Poisson_Boltzmann<RealT>>(pde->getFE());
-    ROL::Ptr<IntegralObjective<RealT> > ctrlObj2
-      = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[2],assembler);
+    ROL::Ptr<IntegralObjective<RealT>>
+      ctrlObj2 = ROL::makePtr<IntegralObjective<RealT>>(qoi_vec[2],assembler);
     // Build standard vector objective function
     RealT currentWeight = parlist->sublist("Problem").get("Desired Current Scale",1.5);
     RealT J = stateObj->value(*rup,*rzp,tol); // Reference current flow over drain
@@ -248,56 +211,56 @@ int main(int argc, char *argv[]) {
     RealT w1 = parlist->sublist("Problem").get("State Cost Parameter",1e-3);
     RealT w2 = parlist->sublist("Problem").get("Control Misfit Parameter",1e-2);
     RealT w3 = parlist->sublist("Problem").get("Control Cost Parameter",1e-8);
-    ROL::Ptr<ROL::StdObjective<RealT> > std_obj
-      = ROL::makePtr<StdObjective_Poisson_Boltzmann<RealT>>(J,w1,w2,w3);
+    ROL::Ptr<ROL::StdObjective<RealT>>
+      std_obj = ROL::makePtr<StdObjective_Poisson_Boltzmann<RealT>>(J,w1,w2,w3);
     // Build full-space objective
-    ROL::Ptr<PDE_Objective<RealT> > obj
-      = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,std_obj,assembler);
+    ROL::Ptr<PDE_Objective<RealT>>
+      obj = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,std_obj,assembler);
     // Build reduced-space objective
     bool storage = parlist->sublist("Problem").get("Use state storage",true);
-    ROL::Ptr<ROL::SimController<RealT> > stateStore
-      = ROL::makePtr<ROL::SimController<RealT>>();
-    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT> > objReduced
-      = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(
-                       obj,pdeWithDoping,stateStore,up,zp,pp,storage);
+    ROL::Ptr<ROL::VectorController<RealT>>
+      stateStore = ROL::makePtr<ROL::VectorController<RealT>>();
+    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT>>
+      objReduced = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(
+                   obj,pdeWithDoping,stateStore,up,zp,pp,storage);
  
     /*************************************************************************/
     /***************** BUILD BOUND CONSTRAINT ********************************/
     /*************************************************************************/
-    ROL::Ptr<Tpetra::MultiVector<> > lo_ptr = assembler->createControlVector();
-    ROL::Ptr<Tpetra::MultiVector<> > hi_ptr = assembler->createControlVector();
-    ROL::Ptr<DopingBounds<RealT> > dopeBnd
-      = ROL::makePtr<DopingBounds<RealT>>(pde->getFE(),pde->getCellNodes(),
-                                             assembler->getDofManager()->getCellDofs(),
-                                             assembler->getCellIds(),*parlist);
+    ROL::Ptr<Tpetra::MultiVector<>> lo_ptr = assembler->createControlVector();
+    ROL::Ptr<Tpetra::MultiVector<>> hi_ptr = assembler->createControlVector();
+    ROL::Ptr<DopingBounds<RealT>>
+      dopeBnd = ROL::makePtr<DopingBounds<RealT>>(pde->getFE(),pde->getCellNodes(),
+                                                  assembler->getDofManager()->getCellDofs(),
+                                                  assembler->getCellIds(),*parlist);
     dopeBnd->build(lo_ptr,hi_ptr);
-    ROL::Ptr<ROL::Vector<RealT> > lop, hip;
+    ROL::Ptr<ROL::Vector<RealT>> lop, hip;
     lop = ROL::makePtr<PDE_PrimalOptVector<RealT>>(lo_ptr,pde,assembler);
     hip = ROL::makePtr<PDE_PrimalOptVector<RealT>>(hi_ptr,pde,assembler);
-    ROL::Ptr<ROL::BoundConstraint<RealT> > bnd
-      = ROL::makePtr<ROL::Bounds<RealT>>(lop,hip);
+    ROL::Ptr<ROL::BoundConstraint<RealT>>
+      bnd = ROL::makePtr<ROL::Bounds<RealT>>(lop,hip);
     bool deactivate = parlist->sublist("Problem").get("Deactivate Bound Constraints",false);
-    if (deactivate) {
-      bnd->deactivate();
-    }
+    if (deactivate) bnd->deactivate();
 
     /*************************************************************************/
     /***************** BUILD STOCHASTIC PROBLEM ******************************/
     /*************************************************************************/
-    ROL::OptimizationProblem<RealT> opt(objReduced,zp,bnd);
+    ROL::Ptr<ROL::StochasticProblem<RealT>>
+      opt = ROL::makePtr<ROL::StochasticProblem<RealT>>(objReduced,zp);
+    opt->addBoundConstraint(bnd);
     parlist->sublist("SOL").set("Initial Statistic", static_cast<RealT>(1));
-    opt.setStochasticObjective(*parlist,sampler);
+    opt->makeObjectiveStochastic(*parlist,sampler);
 
     /*************************************************************************/
     /***************** RUN VECTOR AND DERIVATIVE CHECKS **********************/
     /*************************************************************************/
     bool checkDeriv = parlist->sublist("Problem").get("Check Derivatives",false);
     if ( checkDeriv ) {
-      ROL::Ptr<Tpetra::MultiVector<> > du_ptr = assembler->createStateVector();
-      ROL::Ptr<Tpetra::MultiVector<> > dz_ptr = assembler->createControlVector();
+      ROL::Ptr<Tpetra::MultiVector<>> du_ptr = assembler->createStateVector();
+      ROL::Ptr<Tpetra::MultiVector<>> dz_ptr = assembler->createControlVector();
       du_ptr->randomize(); //du_ptr->putScalar(static_cast<RealT>(0));
       dz_ptr->randomize(); //dz_ptr->putScalar(static_cast<RealT>(1));
-      ROL::Ptr<ROL::Vector<RealT> > dup, dzp;
+      ROL::Ptr<ROL::Vector<RealT>> dup, dzp;
       dup = ROL::makePtr<PDE_PrimalSimVector<RealT>>(du_ptr,pde,assembler,*parlist);
       dzp = ROL::makePtr<PDE_PrimalOptVector<RealT>>(dz_ptr,pde,assembler,*parlist);
       // Create ROL SimOpt vectors
@@ -327,16 +290,18 @@ int main(int argc, char *argv[]) {
       *outStream << "\n\nCheck Hessian of Reduced Objective Function\n";
       objReduced->checkHessVec(*zp,*dzp,true,*outStream);
 
-      opt.check(*outStream);
+      opt->check(true,*outStream);
     }
 
     /*************************************************************************/
     /***************** SOLVE OPTIMIZATION PROBLEM ****************************/
     /*************************************************************************/
-    ROL::Algorithm<RealT> algo("Trust Region",*parlist,false);
+    parlist->sublist("Step").set("Type","Trust Region");
+    opt->finalize(false,true,*outStream);
+    ROL::Solver<RealT> solver(opt,*parlist);
     zp->set(*rzp);
     std::clock_t timer = std::clock();
-    algo.run(opt,true,*outStream);
+    solver.solve(*outStream);
     *outStream << "Optimization time: "
                << static_cast<RealT>(std::clock()-timer)/static_cast<RealT>(CLOCKS_PER_SEC)
                << " seconds." << std::endl << std::endl;
@@ -348,11 +313,11 @@ int main(int argc, char *argv[]) {
     // Output control to file
     pdeCon->outputTpetraVector(z_ptr,"control.txt");
     // Output expected state and samples to file
-    ROL::Ptr<Tpetra::MultiVector<> > Lu_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> > Lv_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> > Gu_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> > Gv_ptr = assembler->createStateVector();
-    ROL::Ptr<ROL::Vector<RealT> > Lup, Gup, Lvp, Gvp;
+    ROL::Ptr<Tpetra::MultiVector<>> Lu_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> Lv_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> Gu_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> Gv_ptr = assembler->createStateVector();
+    ROL::Ptr<ROL::Vector<RealT>> Lup, Gup, Lvp, Gvp;
     Lup = ROL::makePtr<PDE_PrimalSimVector<RealT>>(Lu_ptr,pde,assembler,*parlist);
     Lvp = ROL::makePtr<PDE_PrimalSimVector<RealT>>(Lv_ptr,pde,assembler,*parlist);
     Gup = ROL::makePtr<PDE_PrimalSimVector<RealT>>(Gu_ptr,pde,assembler,*parlist);
@@ -375,7 +340,7 @@ int main(int argc, char *argv[]) {
     // Build objective function distribution
     RealT val(0), val1(0), val2(0);
     int nsamp_dist = parlist->sublist("Problem").get("Number of Output Samples",100);
-    ROL::Ptr<ROL::SampleGenerator<RealT> > sampler_dist
+    ROL::Ptr<ROL::SampleGenerator<RealT>> sampler_dist
       = ROL::makePtr<ROL::MonteCarloGenerator<RealT>>(nsamp_dist,distVec,bman);
     std::stringstream name;
     name << "obj_samples_" << bman->batchID() << ".txt";
@@ -402,7 +367,7 @@ int main(int argc, char *argv[]) {
                << static_cast<RealT>(std::clock()-timer_print)/static_cast<RealT>(CLOCKS_PER_SEC)
                << " seconds." << std::endl << std::endl;
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

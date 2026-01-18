@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_CONSTRAINT_SIMOPT_H
@@ -49,10 +15,18 @@
 #include "ROL_Types.hpp"
 #include <iostream>
 
-#include "ROL_NonlinearLeastSquaresObjective_SimOpt.hpp"
-#include "ROL_Constraint_State.hpp"
+namespace ROL {
+
+template <class Real>
+class Constraint_SimOpt;
+
+}
+
+#include "ROL_NonlinearLeastSquaresObjective.hpp"
+#include "ROL_SimConstraint.hpp"
 #include "ROL_Objective_FSsolver.hpp"
-#include "ROL_Algorithm.hpp"
+#include "ROL_TypeU_TrustRegionAlgorithm.hpp"
+#include "ROL_TypeE_CompositeStepAlgorithm.hpp"
 
 /** @ingroup func_group
     \class ROL::Constraint_SimOpt
@@ -100,8 +74,8 @@ template <class Real>
 class Constraint_SimOpt : public Constraint<Real> {
 private:
   // Additional vector storage for solve
-  ROL::Ptr<Vector<Real> > unew_;
-  ROL::Ptr<Vector<Real> > jv_;
+  Ptr<Vector<Real>> unew_;
+  Ptr<Vector<Real>> jv_;
 
   // Default parameters for solve (backtracking Newton)
   const Real DEFAULT_atol_;
@@ -115,6 +89,8 @@ private:
   const int  DEFAULT_solverType_;
 
   // User-set parameters for solve (backtracking Newton)
+
+protected:
   Real atol_;
   Real rtol_;
   Real stol_;
@@ -131,7 +107,7 @@ private:
 public:
   Constraint_SimOpt()
     : Constraint<Real>(),
-      unew_(ROL::nullPtr), jv_(ROL::nullPtr),
+      unew_(nullPtr), jv_(nullPtr),
       DEFAULT_atol_(1.e-4*std::sqrt(ROL_EPSILON<Real>())),
       DEFAULT_rtol_(1.e0),
       DEFAULT_stol_(std::sqrt(ROL_EPSILON<Real>())),
@@ -154,6 +130,10 @@ public:
     update_1(u,flag,iter);
     update_2(z,flag,iter);  
   }
+  virtual void update( const Vector<Real> &u, const Vector<Real> &z, UpdateType type, int iter = -1 ) {
+    update_1(u,type,iter);
+    update_2(z,type,iter);  
+  }
 
   /** \brief Update constraint functions with respect to Sim variable.  
                 x is the optimization variable, 
@@ -161,6 +141,7 @@ public:
                 iter is the outer algorithm iterations count.
   */
   virtual void update_1( const Vector<Real> &u, bool flag = true, int iter = -1 ) {}
+  virtual void update_1( const Vector<Real> &u, UpdateType type, int iter = -1 ) {}
 
   /** \brief Update constraint functions with respect to Opt variable.
                 x is the optimization variable, 
@@ -168,7 +149,15 @@ public:
                 iter is the outer algorithm iterations count.
   */
   virtual void update_2( const Vector<Real> &z, bool flag = true, int iter = -1 ) {}
+  virtual void update_2( const Vector<Real> &z, UpdateType type, int iter = -1 ) {}
 
+  /** \brief Update SimOpt constraint during solve (disconnected from optimization updates).
+  
+                @param[in]    x is the optimization variable
+                @param[in] type is the update type
+                @param[in] iter is the solver iteration count
+  */
+  virtual void solve_update( const Vector<Real> &u, const Vector<Real> &z, UpdateType type, int iter = -1) {}
 
   /** \brief Evaluate the constraint operator \f$c:\mathcal{U}\times\mathcal{Z} \rightarrow \mathcal{C}\f$
              at \f$(u,z)\f$.
@@ -203,10 +192,9 @@ public:
                      Vector<Real> &u, 
                      const Vector<Real> &z,
                      Real &tol) {
-    if ( zero_ ) {
-      u.zero();
-    }
-    update(u,z,true);
+    if ( zero_ ) u.zero();
+    Ptr<std::ostream> stream = makeStreamPtr(std::cout, print_);
+    solve_update(u,z,UpdateType::Initial,0);
     value(c,u,z,tol);
     Real cnorm = c.norm();
     const Real ctol = std::min(atol_, rtol_*cnorm);
@@ -216,82 +204,74 @@ public:
         jv_   = u.clone();
         firstSolve_ = false;
       }
+      const Real one(1);
       Real alpha(1), tmp(0);
       int cnt = 0;
-      if ( print_ ) {
-        std::cout << "\n     Default Constraint_SimOpt::solve\n";
-        std::cout << "       ";
-        std::cout << std::setw(6)  << std::left << "iter";
-        std::cout << std::setw(15) << std::left << "rnorm";
-        std::cout << std::setw(15) << std::left << "alpha";
-        std::cout << "\n";
-      }
+      *stream << std::endl;
+      *stream << "     Default Constraint_SimOpt::solve" << std::endl;
+      *stream << "       ";
+      *stream << std::setw(6)  << std::left << "iter";
+      *stream << std::setw(15) << std::left << "rnorm";
+      *stream << std::setw(15) << std::left << "alpha";
+      *stream << std::endl;
       for (cnt = 0; cnt < maxit_; ++cnt) {
         // Compute Newton step
         applyInverseJacobian_1(*jv_,c,u,z,tol);
         unew_->set(u);
         unew_->axpy(-alpha, *jv_);
-        update_1(*unew_);
-        //update(*unew_,z);
+        solve_update(*unew_,z,UpdateType::Trial);
         value(c,*unew_,z,tol);
         tmp = c.norm();
         // Perform backtracking line search
-        while ( tmp > (1.0-decr_*alpha)*cnorm &&
+        while ( tmp > (one-decr_*alpha)*cnorm &&
                 alpha > stol_ ) {
           alpha *= factor_;
           unew_->set(u);
           unew_->axpy(-alpha,*jv_);
-          update_1(*unew_);
-          //update(*unew_,z);
+          solve_update(*unew_,z,UpdateType::Trial);
           value(c,*unew_,z,tol);
           tmp = c.norm();
         }
-        if ( print_ ) {
-          std::cout << "       ";
-          std::cout << std::setw(6)  << std::left << cnt;
-          std::cout << std::scientific << std::setprecision(6);
-          std::cout << std::setw(15) << std::left << tmp;
-          std::cout << std::scientific << std::setprecision(6);
-          std::cout << std::setw(15) << std::left << alpha;
-          std::cout << "\n";
-        }
+        *stream << "       ";
+        *stream << std::setw(6)  << std::left << cnt;
+        *stream << std::scientific << std::setprecision(6);
+        *stream << std::setw(15) << std::left << tmp;
+        *stream << std::scientific << std::setprecision(6);
+        *stream << std::setw(15) << std::left << alpha;
+        *stream << std::endl;
         // Update iterate
         cnorm = tmp;
         u.set(*unew_);
-        if (cnorm <= ctol) { // = covers the case of identically zero residual
-          break;
-        }
-        update(u,z,true);
-        alpha = 1.0;
+        solve_update(u,z,UpdateType::Accept,cnt);
+        if (cnorm <= ctol) break; // = covers the case of identically zero residual
+        alpha = one;
       }
     }
     if (solverType_==1 || (solverType_==3 && cnorm > ctol)) {
-      ROL::Ptr<Constraint_SimOpt<Real> > con = ROL::makePtrFromRef(*this);
-      ROL::Ptr<Objective<Real> > obj = ROL::makePtr<NonlinearLeastSquaresObjective_SimOpt<Real>>(con,u,z,c,true);
-      ROL::ParameterList parlist;
+      Ptr<Constraint<Real>> con = makePtr<SimConstraint<Real>>(makePtrFromRef(*this),makePtrFromRef(z),true);
+      Ptr<Objective<Real>>  obj = makePtr<NonlinearLeastSquaresObjective<Real>>(con,u,c,true);
+      ParameterList parlist;
+      parlist.sublist("General").set("Output Level",1);
+      parlist.sublist("General").sublist("Krylov").set("Iteration Limit",100);
+      parlist.sublist("Step").sublist("Trust Region").set("Subproblem Solver","Truncated CG");
       parlist.sublist("Status Test").set("Gradient Tolerance",ctol);
       parlist.sublist("Status Test").set("Step Tolerance",stol_);
       parlist.sublist("Status Test").set("Iteration Limit",maxit_);
-      parlist.sublist("Step").sublist("Trust Region").set("Subproblem Solver","Truncated CG");
-      parlist.sublist("General").sublist("Krylov").set("Iteration Limit",100);
-      ROL::Ptr<Algorithm<Real> > algo = ROL::makePtr<Algorithm<Real>>("Trust Region",parlist,false);
-      algo->run(u,*obj,print_);
+      Ptr<TypeU::Algorithm<Real>> algo = makePtr<TypeU::TrustRegionAlgorithm<Real>>(parlist);
+      algo->run(u,*obj,*stream);
       value(c,u,z,tol);
     }
     if (solverType_==2 || (solverType_==4 && cnorm > ctol)) {
-      ROL::Ptr<Constraint_SimOpt<Real> > con = ROL::makePtrFromRef(*this);
-      ROL::Ptr<const Vector<Real> > zVec = ROL::makePtrFromRef(z);
-      ROL::Ptr<Constraint<Real> > conU
-        = ROL::makePtr<Constraint_State<Real>>(con,zVec);
-      ROL::Ptr<Objective<Real> > objU
-        = ROL::makePtr<Objective_FSsolver<Real>>();
-      ROL::ParameterList parlist;
+      Ptr<Constraint<Real>> con = makePtr<SimConstraint<Real>>(makePtrFromRef(*this),makePtrFromRef(z),true);
+      Ptr<Objective<Real>>  obj = makePtr<Objective_FSsolver<Real>>();
+      Ptr<Vector<Real>>       l = c.dual().clone();
+      ParameterList parlist;
+      parlist.sublist("General").set("Output Level",1);
       parlist.sublist("Status Test").set("Constraint Tolerance",ctol);
       parlist.sublist("Status Test").set("Step Tolerance",stol_);
       parlist.sublist("Status Test").set("Iteration Limit",maxit_);
-      ROL::Ptr<Algorithm<Real> > algo = ROL::makePtr<Algorithm<Real>>("Composite Step",parlist,false);
-      ROL::Ptr<Vector<Real> > l = c.dual().clone();
-      algo->run(u,*l,*objU,*conU,print_);
+      Ptr<TypeE::Algorithm<Real>> algo = makePtr<TypeE::CompositeStepAlgorithm<Real>>(parlist);
+      algo->run(u,*obj,*con,*l,*stream);
       value(c,u,z,tol);
     }
     if (solverType_ > 4 || solverType_ < 0) {
@@ -302,7 +282,7 @@ public:
 
   /** \brief Set solve parameters.
 
-             @param[in]       parlist   ROL::ParameterList containing solve parameters
+             @param[in]       parlist   ParameterList containing solve parameters
 
              For the default implementation, parlist has two sublist ("SimOpt"
              and "Solve") and the "Solve" sublist has six input parameters.
@@ -320,8 +300,8 @@ public:
 
              ---
   */
-  virtual void setSolveParameters(ROL::ParameterList &parlist) {
-    ROL::ParameterList & list = parlist.sublist("SimOpt").sublist("Solve");
+  virtual void setSolveParameters(ParameterList &parlist) {
+    ParameterList & list = parlist.sublist("SimOpt").sublist("Solve");
     atol_       = list.get("Absolute Residual Tolerance",   DEFAULT_atol_);
     rtol_       = list.get("Relative Residual Tolerance",   DEFAULT_rtol_);
     maxit_      = list.get("Iteration Limit",               DEFAULT_maxit_);
@@ -360,15 +340,15 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Update state vector to u + hv
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> unew = u.clone();
     unew->set(u);
     unew->axpy(h,v);
     // Compute new constraint value
-    update(*unew,z);
+    update(*unew,z,UpdateType::Temp);
     value(jv,*unew,z,ctol);
     // Compute current constraint value
-    ROL::Ptr<Vector<Real> > cold = jv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> cold = jv.clone();
+    update(u,z,UpdateType::Temp);
     value(*cold,u,z,ctol);
     // Compute Newton quotient
     jv.axpy(-1.0,*cold);
@@ -403,15 +383,15 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Update state vector to u + hv
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> znew = z.clone();
     znew->set(z);
     znew->axpy(h,v);
     // Compute new constraint value
-    update(u,*znew);
+    update(u,*znew,UpdateType::Temp);
     value(jv,u,*znew,ctol);
     // Compute current constraint value
-    ROL::Ptr<Vector<Real> > cold = jv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> cold = jv.clone();
+    update(u,z,UpdateType::Temp);
     value(*cold,u,z,ctol);
     // Compute Newton quotient
     jv.axpy(-1.0,*cold);
@@ -494,22 +474,22 @@ public:
     if (v.norm() > std::sqrt(ROL_EPSILON<Real>())) {
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
-    ROL::Ptr<Vector<Real> > cold = dualv.clone();
-    ROL::Ptr<Vector<Real> > cnew = dualv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> cold = dualv.clone();
+    Ptr<Vector<Real>> cnew = dualv.clone();
+    update(u,z,UpdateType::Temp);
     value(*cold,u,z,ctol);
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> unew = u.clone();
     ajv.zero();
     for (int i = 0; i < u.dimension(); i++) {
       unew->set(u);
       unew->axpy(h,*(u.basis(i)));
-      update(*unew,z);
+      update(*unew,z,UpdateType::Temp);
       value(*cnew,*unew,z,ctol);
       cnew->axpy(-1.0,*cold);
       cnew->scale(1.0/h);
       ajv.axpy(cnew->dot(v),*((u.dual()).basis(i)));
     }
-    update(u,z);
+    update(u,z,UpdateType::Temp);
   }
 
 
@@ -565,22 +545,22 @@ public:
     if (v.norm() > std::sqrt(ROL_EPSILON<Real>())) {
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
-    ROL::Ptr<Vector<Real> > cold = dualv.clone();
-    ROL::Ptr<Vector<Real> > cnew = dualv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> cold = dualv.clone();
+    Ptr<Vector<Real>> cnew = dualv.clone();
+    update(u,z,UpdateType::Temp);
     value(*cold,u,z,ctol);
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> znew = z.clone();
     ajv.zero();
     for (int i = 0; i < z.dimension(); i++) {
       znew->set(z);
       znew->axpy(h,*(z.basis(i)));
-      update(u,*znew);
+      update(u,*znew,UpdateType::Temp);
       value(*cnew,u,*znew,ctol);
       cnew->axpy(-1.0,*cold);
       cnew->scale(1.0/h);
       ajv.axpy(cnew->dot(v),*((z.dual()).basis(i)));
     }
-    update(u,z);
+    update(u,z,UpdateType::Temp);
   }
 
   /** \brief Apply the inverse of the adjoint of the partial constraint Jacobian at \f$(u,z)\f$, 
@@ -637,14 +617,14 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Evaluate Jacobian at new state
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> unew = u.clone();
     unew->set(u);
     unew->axpy(h,v);
-    update(*unew,z);
+    update(*unew,z,UpdateType::Temp);
     applyAdjointJacobian_1(ahwv,w,*unew,z,jtol);
     // Evaluate Jacobian at old state
-    ROL::Ptr<Vector<Real> > jv = ahwv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> jv = ahwv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_1(*jv,w,u,z,jtol);
     // Compute Newton quotient
     ahwv.axpy(-1.0,*jv);
@@ -682,14 +662,14 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Evaluate Jacobian at new state
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> unew = u.clone();
     unew->set(u);
     unew->axpy(h,v);
-    update(*unew,z);
+    update(*unew,z,UpdateType::Temp);
     applyAdjointJacobian_2(ahwv,w,*unew,z,jtol);
     // Evaluate Jacobian at old state
-    ROL::Ptr<Vector<Real> > jv = ahwv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> jv = ahwv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_2(*jv,w,u,z,jtol);
     // Compute Newton quotient
     ahwv.axpy(-1.0,*jv);
@@ -727,14 +707,14 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Evaluate Jacobian at new control
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> znew = z.clone();
     znew->set(z);
     znew->axpy(h,v);
-    update(u,*znew);
+    update(u,*znew,UpdateType::Temp);
     applyAdjointJacobian_1(ahwv,w,u,*znew,jtol);
     // Evaluate Jacobian at old control
-    ROL::Ptr<Vector<Real> > jv = ahwv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> jv = ahwv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_1(*jv,w,u,z,jtol);
     // Compute Newton quotient
     ahwv.axpy(-1.0,*jv);
@@ -771,14 +751,14 @@ public:
       h = std::max(1.0,u.norm()/v.norm())*tol;
     }
     // Evaluate Jacobian at new control
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> znew = z.clone();
     znew->set(z);
     znew->axpy(h,v);
-    update(u,*znew);
+    update(u,*znew,UpdateType::Temp);
     applyAdjointJacobian_2(ahwv,w,u,*znew,jtol);
     // Evaluate Jacobian at old control
-    ROL::Ptr<Vector<Real> > jv = ahwv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> jv = ahwv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_2(*jv,w,u,z,jtol);
     // Compute Newton quotient
     ahwv.axpy(-1.0,*jv);
@@ -857,7 +837,7 @@ public:
                                    const Vector<Real> &g,
                                    Real &tol) {
     const Vector_SimOpt<Real> &xs = dynamic_cast<const Vector_SimOpt<Real>&>(x);
-    ROL::Ptr<ROL::Vector<Real> > ijv = (xs.get_1())->clone();
+    Ptr<Vector<Real>> ijv = (xs.get_1())->clone();
 
     try {
       applyInverseJacobian_1(*ijv, v, *(xs.get_1()), *(xs.get_2()), tol);
@@ -868,7 +848,7 @@ public:
     }
 
     const Vector_SimOpt<Real> &gs = dynamic_cast<const Vector_SimOpt<Real>&>(g);
-    ROL::Ptr<ROL::Vector<Real> > ijv_dual = (gs.get_1())->clone();
+    Ptr<Vector<Real>> ijv_dual = (gs.get_1())->clone();
     ijv_dual->set(ijv->dual());
 
     try {
@@ -891,6 +871,11 @@ public:
       dynamic_cast<const Vector<Real>&>(x));
     update(*(xs.get_1()),*(xs.get_2()),flag,iter);
   }
+  virtual void update( const Vector<Real> &x, UpdateType type, int iter = -1 ) {
+    const Vector_SimOpt<Real> &xs = dynamic_cast<const Vector_SimOpt<Real>&>(
+      dynamic_cast<const Vector<Real>&>(x));
+    update(*(xs.get_1()),*(xs.get_2()),type,iter);
+  }
 
   virtual void value(Vector<Real> &c,
                      const Vector<Real> &x,
@@ -910,12 +895,13 @@ public:
     const Vector_SimOpt<Real> &vs = dynamic_cast<const Vector_SimOpt<Real>&>(
       dynamic_cast<const Vector<Real>&>(v));
     applyJacobian_1(jv,*(vs.get_1()),*(xs.get_1()),*(xs.get_2()),tol);
-    ROL::Ptr<Vector<Real> > jv2 = jv.clone();
+    Ptr<Vector<Real>> jv2 = jv.clone();
     applyJacobian_2(*jv2,*(vs.get_2()),*(xs.get_1()),*(xs.get_2()),tol);
     jv.plus(*jv2);
   }
 
 
+  using Constraint<Real>::applyAdjointJacobian;
   virtual void applyAdjointJacobian(Vector<Real> &ajv,
                                     const Vector<Real> &v,
                                     const Vector<Real> &x,
@@ -924,10 +910,10 @@ public:
       dynamic_cast<Vector<Real>&>(ajv));
     const Vector_SimOpt<Real> &xs = dynamic_cast<const Vector_SimOpt<Real>&>(
       dynamic_cast<const Vector<Real>&>(x));
-    ROL::Ptr<Vector<Real> > ajv1 = (ajvs.get_1())->clone();
+    Ptr<Vector<Real>> ajv1 = (ajvs.get_1())->clone();
     applyAdjointJacobian_1(*ajv1,v,*(xs.get_1()),*(xs.get_2()),tol);
     ajvs.set_1(*ajv1);
-    ROL::Ptr<Vector<Real> > ajv2 = (ajvs.get_2())->clone();
+    Ptr<Vector<Real>> ajv2 = (ajvs.get_2())->clone();
     applyAdjointJacobian_2(*ajv2,v,*(xs.get_1()),*(xs.get_2()),tol);
     ajvs.set_2(*ajv2);
   }
@@ -945,15 +931,15 @@ public:
     const Vector_SimOpt<Real> &vs = dynamic_cast<const Vector_SimOpt<Real>&>(
       dynamic_cast<const Vector<Real>&>(v));
     // Block-row 1
-    ROL::Ptr<Vector<Real> > C11 = (ahwvs.get_1())->clone();
-    ROL::Ptr<Vector<Real> > C21 = (ahwvs.get_1())->clone();
+    Ptr<Vector<Real>> C11 = (ahwvs.get_1())->clone();
+    Ptr<Vector<Real>> C21 = (ahwvs.get_1())->clone();
     applyAdjointHessian_11(*C11,w,*(vs.get_1()),*(xs.get_1()),*(xs.get_2()),tol);
     applyAdjointHessian_21(*C21,w,*(vs.get_2()),*(xs.get_1()),*(xs.get_2()),tol);
     C11->plus(*C21);
     ahwvs.set_1(*C11); 
     // Block-row 2
-    ROL::Ptr<Vector<Real> > C12 = (ahwvs.get_2())->clone();
-    ROL::Ptr<Vector<Real> > C22 = (ahwvs.get_2())->clone();
+    Ptr<Vector<Real>> C12 = (ahwvs.get_2())->clone();
+    Ptr<Vector<Real>> C22 = (ahwvs.get_2())->clone();
     applyAdjointHessian_12(*C12,w,*(vs.get_1()),*(xs.get_1()),*(xs.get_2()),tol);
     applyAdjointHessian_22(*C22,w,*(vs.get_2()),*(xs.get_1()),*(xs.get_2()),tol);
     C22->plus(*C12);
@@ -962,19 +948,19 @@ public:
 
 
 
-  virtual Real checkSolve(const ROL::Vector<Real> &u, 
-                          const ROL::Vector<Real> &z, 
-                          const ROL::Vector<Real> &c,
+  virtual Real checkSolve(const Vector<Real> &u, 
+                          const Vector<Real> &z, 
+                          const Vector<Real> &c,
                           const bool printToStream = true,
                           std::ostream & outStream = std::cout) {
     // Solve constraint for u. 
     Real tol = ROL_EPSILON<Real>();
-    ROL::Ptr<ROL::Vector<Real> > r = c.clone();
-    ROL::Ptr<ROL::Vector<Real> > s = u.clone();
+    Ptr<Vector<Real>> r = c.clone();
+    Ptr<Vector<Real>> s = u.clone();
     solve(*r,*s,z,tol);
     // Evaluate constraint residual at (u,z).
-    ROL::Ptr<ROL::Vector<Real> > cs = c.clone();
-    update(*s,z);
+    Ptr<Vector<Real>> cs = c.clone();
+    update(*s,z,UpdateType::Temp);
     value(*cs,*s,z,tol);
     // Output norm of residual.
     Real rnorm = r->norm();
@@ -1018,9 +1004,7 @@ public:
              the user does not define the dual() operation.
 
              @param[out]      w              is a dual constraint-space vector
-             @param[in]       v              is a simulation-space vector    u_lo->zero();
-    u_up->setScalar( height );
-
+             @param[in]       v              is a simulation-space vector
              @param[in]       u              is the constraint argument; a simulation-space vector
              @param[in]       z              is the constraint argument; an optimization-space vector
              @param[in]       dualw          is a constraint-space vector 
@@ -1039,14 +1023,16 @@ public:
                                                  const bool printToStream = true,
                                                  std::ostream & outStream = std::cout) {
     Real tol = ROL_EPSILON<Real>();
-    ROL::Ptr<Vector<Real> > Jv = dualw.clone();
-    update(u,z);
+    Ptr<Vector<Real>> Jv = dualw.clone();
+    update(u,z,UpdateType::Temp);
     applyJacobian_1(*Jv,v,u,z,tol);
-    Real wJv = w.dot(Jv->dual());
-    ROL::Ptr<Vector<Real> > Jw = dualv.clone();
-    update(u,z);
+    //Real wJv = w.dot(Jv->dual());
+    Real wJv = w.apply(*Jv);
+    Ptr<Vector<Real>> Jw = dualv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_1(*Jw,w,u,z,tol);
-    Real vJw = v.dot(Jw->dual());
+    //Real vJw = v.dot(Jw->dual());
+    Real vJw = v.apply(*Jw);
     Real diff = std::abs(wJv-vJw);
     if ( printToStream ) {
       std::stringstream hist;
@@ -1106,14 +1092,16 @@ public:
                                                  const bool printToStream = true,
                                                  std::ostream & outStream = std::cout) {
     Real tol = ROL_EPSILON<Real>();
-    ROL::Ptr<Vector<Real> > Jv = dualw.clone();
-    update(u,z);
+    Ptr<Vector<Real>> Jv = dualw.clone();
+    update(u,z,UpdateType::Temp);
     applyJacobian_2(*Jv,v,u,z,tol);
-    Real wJv = w.dot(Jv->dual());
-    ROL::Ptr<Vector<Real> > Jw = dualv.clone();
-    update(u,z);
+    //Real wJv = w.dot(Jv->dual());
+    Real wJv = w.apply(*Jv);
+    Ptr<Vector<Real>> Jw = dualv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_2(*Jw,w,u,z,tol);
-    Real vJw = v.dot(Jw->dual());
+    //Real vJw = v.dot(Jw->dual());
+    Real vJw = v.apply(*Jw);
     Real diff = std::abs(wJv-vJw);
     if ( printToStream ) {
       std::stringstream hist;
@@ -1134,13 +1122,13 @@ public:
                                       const bool printToStream = true,
                                       std::ostream & outStream = std::cout) {
     Real tol = ROL_EPSILON<Real>();
-    ROL::Ptr<Vector<Real> > Jv = jv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> Jv = jv.clone();
+    update(u,z,UpdateType::Temp);
     applyJacobian_1(*Jv,v,u,z,tol);
-    ROL::Ptr<Vector<Real> > iJJv = u.clone();
-    update(u,z); // Does this update do anything?
+    Ptr<Vector<Real>> iJJv = u.clone();
+    //update(u,z); // Does this update do anything?
     applyInverseJacobian_1(*iJJv,*Jv,u,z,tol);
-    ROL::Ptr<Vector<Real> > diff = v.clone();
+    Ptr<Vector<Real>> diff = v.clone();
     diff->set(v);
     diff->axpy(-1.0,*iJJv);
     Real dnorm = diff->norm();
@@ -1164,13 +1152,13 @@ public:
                                              const bool printToStream = true,
                                              std::ostream & outStream = std::cout) {
     Real tol = ROL_EPSILON<Real>();
-    ROL::Ptr<Vector<Real> > Jv = jv.clone();
-    update(u,z);
+    Ptr<Vector<Real>> Jv = jv.clone();
+    update(u,z,UpdateType::Temp);
     applyAdjointJacobian_1(*Jv,v,u,z,tol);
-    ROL::Ptr<Vector<Real> > iJJv = v.clone();
-    update(u,z);
+    Ptr<Vector<Real>> iJJv = v.clone();
+    //update(u,z);
     applyInverseAdjointJacobian_1(*iJJv,*Jv,u,z,tol);
-    ROL::Ptr<Vector<Real> > diff = v.clone();
+    Ptr<Vector<Real>> diff = v.clone();
     diff->set(v);
     diff->axpy(-1.0,*iJJv);
     Real dnorm = diff->norm();
@@ -1189,7 +1177,7 @@ public:
 
 
 
-  std::vector<std::vector<Real> > checkApplyJacobian_1(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyJacobian_1(const Vector<Real> &u,
                                                        const Vector<Real> &z,
                                                        const Vector<Real> &v,
                                                        const Vector<Real> &jv,
@@ -1208,7 +1196,7 @@ public:
   
   
   
-  std::vector<std::vector<Real> > checkApplyJacobian_1(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyJacobian_1(const Vector<Real> &u,
                                                        const Vector<Real> &z,
                                                        const Vector<Real> &v,
                                                        const Vector<Real> &jv,
@@ -1230,26 +1218,26 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > jvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> jvCheck(numSteps, tmp);
  
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
  
     // Compute constraint value at x.
-    ROL::Ptr<Vector<Real> > c = jv.clone();
-    this->update(u,z);
+    Ptr<Vector<Real>> c = jv.clone();
+    this->update(u,z,UpdateType::Temp);
     this->value(*c, u, z, tol);
  
     // Compute (Jacobian at x) times (vector v).
-    ROL::Ptr<Vector<Real> > Jv = jv.clone();
+    Ptr<Vector<Real>> Jv = jv.clone();
     this->applyJacobian_1(*Jv, v, u, z, tol);
     Real normJv = Jv->norm();
  
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > cdif = jv.clone();
-    ROL::Ptr<Vector<Real> > cnew = jv.clone();
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> cdif = jv.clone();
+    Ptr<Vector<Real>> cnew = jv.clone();
+    Ptr<Vector<Real>> unew = u.clone();
  
     for (int i=0; i<numSteps; i++) {
  
@@ -1265,7 +1253,7 @@ public:
          unew->axpy(eta*shifts[order-1][j], v);
 
          if( weights[order-1][j+1] != 0 ) {
-             this->update(*unew,z);
+             this->update(*unew,z,UpdateType::Temp);
              this->value(*cnew,*unew,z,tol);
              cdif->axpy(weights[order-1][j+1],*cnew);
          }
@@ -1314,7 +1302,7 @@ public:
   } // checkApplyJacobian
 
 
-  std::vector<std::vector<Real> > checkApplyJacobian_2(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyJacobian_2(const Vector<Real> &u,
                                                        const Vector<Real> &z,
                                                        const Vector<Real> &v,
                                                        const Vector<Real> &jv,
@@ -1333,7 +1321,7 @@ public:
   
   
   
-  std::vector<std::vector<Real> > checkApplyJacobian_2(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyJacobian_2(const Vector<Real> &u,
                                                        const Vector<Real> &z,
                                                        const Vector<Real> &v,
                                                        const Vector<Real> &jv,
@@ -1355,26 +1343,26 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > jvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> jvCheck(numSteps, tmp);
  
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
  
     // Compute constraint value at x.
-    ROL::Ptr<Vector<Real> > c = jv.clone();
-    this->update(u,z);
+    Ptr<Vector<Real>> c = jv.clone();
+    this->update(u,z,UpdateType::Temp);
     this->value(*c, u, z, tol);
  
     // Compute (Jacobian at x) times (vector v).
-    ROL::Ptr<Vector<Real> > Jv = jv.clone();
+    Ptr<Vector<Real>> Jv = jv.clone();
     this->applyJacobian_2(*Jv, v, u, z, tol);
     Real normJv = Jv->norm();
  
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > cdif = jv.clone();
-    ROL::Ptr<Vector<Real> > cnew = jv.clone();
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> cdif = jv.clone();
+    Ptr<Vector<Real>> cnew = jv.clone();
+    Ptr<Vector<Real>> znew = z.clone();
  
     for (int i=0; i<numSteps; i++) {
  
@@ -1390,7 +1378,7 @@ public:
          znew->axpy(eta*shifts[order-1][j], v);
 
          if( weights[order-1][j+1] != 0 ) {
-             this->update(u,*znew);
+             this->update(u,*znew,UpdateType::Temp);
              this->value(*cnew,u,*znew,tol);
              cdif->axpy(weights[order-1][j+1],*cnew);
          }
@@ -1440,7 +1428,7 @@ public:
 
 
 
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_11(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_11(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1458,7 +1446,7 @@ public:
   
   }
   
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_11(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_11(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1477,21 +1465,21 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > ahpvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> ahpvCheck(numSteps, tmp);
   
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > AJdif = hv.clone();
-    ROL::Ptr<Vector<Real> > AJp = hv.clone();
-    ROL::Ptr<Vector<Real> > AHpv = hv.clone();
-    ROL::Ptr<Vector<Real> > AJnew = hv.clone();
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> AJdif = hv.clone();
+    Ptr<Vector<Real>> AJp = hv.clone();
+    Ptr<Vector<Real>> AHpv = hv.clone();
+    Ptr<Vector<Real>> AJnew = hv.clone();
+    Ptr<Vector<Real>> unew = u.clone();
   
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
   
     // Apply adjoint Jacobian to p.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->applyAdjointJacobian_1(*AJp, p, u, z, tol);
   
     // Apply adjoint Hessian at (u,z), in direction v, to p.
@@ -1513,7 +1501,7 @@ public:
           unew->axpy(eta*shifts[order-1][j],v); 
   
           if( weights[order-1][j+1] != 0 ) {    
-              this->update(*unew,z);
+              this->update(*unew,z,UpdateType::Temp);
               this->applyAdjointJacobian_1(*AJnew, p, *unew, z, tol);
               AJdif->axpy(weights[order-1][j+1],*AJnew);
           }
@@ -1563,7 +1551,7 @@ public:
   /** 
      \brief \f$ u\in U \f$, \f$ z\in Z \f$, \f$ p\in C^\ast \f$, \f$ v \in U \f$, \f$ hv \in U^\ast \f$ 
   */
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_21(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_21(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1584,7 +1572,7 @@ public:
   /** 
      \brief \f$ u\in U \f$, \f$ z\in Z \f$, \f$ p\in C^\ast \f$, \f$ v \in U \f$, \f$ hv \in U^\ast \f$ 
   */
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_21(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_21(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1603,21 +1591,21 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > ahpvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> ahpvCheck(numSteps, tmp);
   
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > AJdif = hv.clone();
-    ROL::Ptr<Vector<Real> > AJp = hv.clone();
-    ROL::Ptr<Vector<Real> > AHpv = hv.clone();
-    ROL::Ptr<Vector<Real> > AJnew = hv.clone();
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> AJdif = hv.clone();
+    Ptr<Vector<Real>> AJp = hv.clone();
+    Ptr<Vector<Real>> AHpv = hv.clone();
+    Ptr<Vector<Real>> AJnew = hv.clone();
+    Ptr<Vector<Real>> znew = z.clone();
   
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
   
     // Apply adjoint Jacobian to p.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->applyAdjointJacobian_1(*AJp, p, u, z, tol);
   
     // Apply adjoint Hessian at (u,z), in direction v, to p.
@@ -1639,7 +1627,7 @@ public:
           znew->axpy(eta*shifts[order-1][j],v); 
   
           if( weights[order-1][j+1] != 0 ) {    
-              this->update(u,*znew);
+              this->update(u,*znew,UpdateType::Temp);
               this->applyAdjointJacobian_1(*AJnew, p, u, *znew, tol);
               AJdif->axpy(weights[order-1][j+1],*AJnew);
           }
@@ -1689,7 +1677,7 @@ public:
   /** 
      \brief \f$ u\in U \f$, \f$ z\in Z \f$, \f$ p\in C^\ast \f$, \f$ v \in U \f$, \f$ hv \in U^\ast \f$ 
   */
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_12(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_12(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1708,7 +1696,7 @@ public:
   }
   
 
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_12(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_12(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1727,21 +1715,21 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > ahpvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> ahpvCheck(numSteps, tmp);
   
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > AJdif = hv.clone();
-    ROL::Ptr<Vector<Real> > AJp = hv.clone();
-    ROL::Ptr<Vector<Real> > AHpv = hv.clone();
-    ROL::Ptr<Vector<Real> > AJnew = hv.clone();
-    ROL::Ptr<Vector<Real> > unew = u.clone();
+    Ptr<Vector<Real>> AJdif = hv.clone();
+    Ptr<Vector<Real>> AJp = hv.clone();
+    Ptr<Vector<Real>> AHpv = hv.clone();
+    Ptr<Vector<Real>> AJnew = hv.clone();
+    Ptr<Vector<Real>> unew = u.clone();
   
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
   
     // Apply adjoint Jacobian to p.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->applyAdjointJacobian_2(*AJp, p, u, z, tol);
   
     // Apply adjoint Hessian at (u,z), in direction v, to p.
@@ -1763,7 +1751,7 @@ public:
           unew->axpy(eta*shifts[order-1][j],v); 
   
           if( weights[order-1][j+1] != 0 ) {    
-              this->update(*unew,z);
+              this->update(*unew,z,UpdateType::Temp);
               this->applyAdjointJacobian_2(*AJnew, p, *unew, z, tol);
               AJdif->axpy(weights[order-1][j+1],*AJnew);
           }
@@ -1810,7 +1798,7 @@ public:
     return ahpvCheck;
   } // checkApplyAdjointHessian_12
 
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_22(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_22(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1828,7 +1816,7 @@ public:
   
   }
   
-  std::vector<std::vector<Real> > checkApplyAdjointHessian_22(const Vector<Real> &u,
+  std::vector<std::vector<Real>> checkApplyAdjointHessian_22(const Vector<Real> &u,
                                                               const Vector<Real> &z,
                                                               const Vector<Real> &p,
                                                               const Vector<Real> &v,
@@ -1847,21 +1835,21 @@ public:
     int numSteps = steps.size();
     int numVals = 4;
     std::vector<Real> tmp(numVals);
-    std::vector<std::vector<Real> > ahpvCheck(numSteps, tmp);
+    std::vector<std::vector<Real>> ahpvCheck(numSteps, tmp);
   
     // Temporary vectors.
-    ROL::Ptr<Vector<Real> > AJdif = hv.clone();
-    ROL::Ptr<Vector<Real> > AJp = hv.clone();
-    ROL::Ptr<Vector<Real> > AHpv = hv.clone();
-    ROL::Ptr<Vector<Real> > AJnew = hv.clone();
-    ROL::Ptr<Vector<Real> > znew = z.clone();
+    Ptr<Vector<Real>> AJdif = hv.clone();
+    Ptr<Vector<Real>> AJp = hv.clone();
+    Ptr<Vector<Real>> AHpv = hv.clone();
+    Ptr<Vector<Real>> AJnew = hv.clone();
+    Ptr<Vector<Real>> znew = z.clone();
   
     // Save the format state of the original outStream.
-    ROL::nullstream oldFormatState;
+    nullstream oldFormatState;
     oldFormatState.copyfmt(outStream);
   
     // Apply adjoint Jacobian to p.
-    this->update(u,z);
+    this->update(u,z,UpdateType::Temp);
     this->applyAdjointJacobian_2(*AJp, p, u, z, tol);
   
     // Apply adjoint Hessian at (u,z), in direction v, to p.
@@ -1883,7 +1871,7 @@ public:
           znew->axpy(eta*shifts[order-1][j],v); 
   
           if( weights[order-1][j+1] != 0 ) {    
-              this->update(u,*znew);
+              this->update(u,*znew,UpdateType::Temp);
               this->applyAdjointJacobian_2(*AJnew, p, u, *znew, tol);
               AJdif->axpy(weights[order-1][j+1],*AJnew);
           }

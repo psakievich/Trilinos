@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_02.cpp
@@ -55,19 +21,17 @@
 #include "ROL_Zakharov.hpp"
 
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 typedef double RealT;
 
 int main(int argc, char *argv[]) {
 
-  using namespace Teuchos;
-
   typedef std::vector<RealT>          vector;  
   typedef ROL::Vector<RealT>          V;      // Abstract vector
   typedef ROL::StdVector<RealT>       SV;     // Concrete vector containing std::vector data
 
-  GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   auto outStream = ROL::makeStreamPtr( std::cout, argc > 1 );
@@ -95,7 +59,9 @@ int main(int argc, char *argv[]) {
       (*k_ptr)[i] = i+1.0;
     }
     
-    ROL::Ptr<ROL::Objective<RealT> > obj = ROL::makePtr<ROL::ZOO::Objective_Zakharov<RealT>>(k);
+    ROL::Ptr<ROL::Objective<RealT>> obj = ROL::makePtr<ROL::ZOO::Objective_Zakharov<RealT>>(k);
+    ROL::Ptr<ROL::BoundConstraint<RealT>> bnd = ROL::makePtr<ROL::BoundConstraint<RealT>>();
+    bnd->deactivate();
     
     ROL::OptimizationProblem<RealT> opt(obj,x);
     ROL::AlgorithmState<RealT> state;
@@ -108,12 +74,24 @@ int main(int argc, char *argv[]) {
     ROL::LineSearchStep<RealT>  ls(*parlist);
     ROL::TrustRegionStep<RealT> tr(*parlist);
 
-    ls.initialize( opt, state );
-    tr.initialize( opt, state );
+    ls.initialize( *opt.getSolutionVector(),
+                    opt.getSolutionVector()->dual(),
+                   *opt.getObjective(),
+                   *bnd, state );
+    tr.initialize( *opt.getSolutionVector(),
+                    opt.getSolutionVector()->dual(),
+                   *opt.getObjective(),
+                   *bnd, state );
 
     for( int iter = 0; iter<10; ++iter ) {
-      ls.compute( *s, opt, state );
-      ls.update( opt, *s, state );
+      ls.compute( *s,
+                  *opt.getSolutionVector(), 
+                  *opt.getObjective(),
+                  *bnd, state ); 
+      ls.update( *opt.getSolutionVector(),
+                 *s,
+                 *opt.getObjective(),
+                 *bnd, state );
 
       state.minIterVec->set(*x);
       state.minIter = state.iter;
@@ -121,8 +99,14 @@ int main(int argc, char *argv[]) {
 
       *outStream << "LS fval = " << state.minValue << std::endl; 
 
-      tr.compute( *s, opt, state );
-      tr.update( opt, *s, state );
+      tr.compute( *s,
+                  *opt.getSolutionVector(), 
+                  *opt.getObjective(),
+                  *bnd, state ); 
+      tr.update( *opt.getSolutionVector(),
+                 *s,
+                 *opt.getObjective(),
+                 *bnd, state );
 
       state.minIterVec->set(*x);
       state.minIter = state.iter;
@@ -135,7 +119,7 @@ int main(int argc, char *argv[]) {
 
 
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

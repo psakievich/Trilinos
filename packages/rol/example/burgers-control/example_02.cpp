@@ -1,51 +1,28 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_02.cpp
     \brief Shows how to solve a steady Burgers' optimal control problem using
-	   the SimOpt interface.  We solve the control problem using Composite
+    the SimOpt interface.  We solve the control problem using Composite
            Step and trust regions.
 */
+
+#include "ROL_TypeU_TrustRegionAlgorithm.hpp"
+#include "ROL_TypeE_CompositeStepAlgorithm.hpp"
+#include "ROL_Reduced_Objective_SimOpt.hpp"
+#include "ROL_Stream.hpp"
+
+#include "ROL_GlobalMPISession.hpp"
+#include "Teuchos_LAPACK.hpp"
+
+#include <iostream>
+#include <algorithm>
 
 #include "example_02.hpp"
 
@@ -53,7 +30,7 @@ typedef double RealT;
 
 int main(int argc, char *argv[]) {
 
-  Teuchos::GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   int iprint = argc - 1;
@@ -142,30 +119,36 @@ int main(int argc, char *argv[]) {
     parlist->sublist("Status Test").set("Constraint Tolerance",1.e-14);
     parlist->sublist("Status Test").set("Step Tolerance",1.e-16);
     parlist->sublist("Status Test").set("Iteration Limit",1000);
-    // Declare ROL algorithm pointer.
-    ROL::Ptr<ROL::Algorithm<RealT> > algo;
 
-    // Run optimization with Composite Step.
-    algo = ROL::makePtr<ROL::Algorithm<RealT>>("Composite Step",*parlist,false);
+    // Run equality-constrained optimization.
     RealT zerotol = std::sqrt(ROL::ROL_EPSILON<RealT>());
     z.zero();
     con.solve(c,u,z,zerotol);
     c.zero(); l.zero();
-    algo->run(x, g, l, c, obj, con, true, *outStream);
+    {
+      // Define algorithm.
+      ROL::TypeE::CompositeStepAlgorithm<RealT> algo(*parlist);
+      // Run Algorithm
+      algo.run(x, obj, con, l, *outStream);
+    }
     ROL::Ptr<ROL::Vector<RealT> > zCS = z.clone();
     zCS->set(z);
 
-    // Run Optimization with Trust-Region algorithm.
-    algo = ROL::makePtr<ROL::Algorithm<RealT>>("Trust Region",*parlist,false);
+    // Run unconstrained optimization.
     z.zero();
-    algo->run(z,robj,true,*outStream);
+    {
+      // Define algorithm.
+      ROL::TypeU::TrustRegionAlgorithm<RealT> algo(*parlist);
+      // Run Algorithm
+      algo.run(z, z.dual(), robj, *outStream);
+    }
 
     // Check solutions.
     ROL::Ptr<ROL::Vector<RealT> > err = z.clone();
     err->set(*zCS); err->axpy(-1.,z);
     errorFlag += ((err->norm()) > 1.e-8) ? 1 : 0;
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

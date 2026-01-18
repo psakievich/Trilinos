@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_01.cpp
@@ -48,11 +14,9 @@
 #define USE_HESSVEC 1
 
 #include "ROL_Rosenbrock.hpp"
-#include "ROL_Algorithm.hpp"
-#include "ROL_TrustRegionStep.hpp"
-#include "ROL_StatusTest.hpp"
+#include "ROL_Solver.hpp"
 #include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 #include <iostream>
 
 typedef double RealT;
@@ -150,6 +114,17 @@ const ROL::Vector<Real> & dual() const {
   return *dual_vec_;
 }
 
+Real apply( const ROL::Vector<Real> &x ) const {
+  Real val = 0;
+     
+  ROL::Ptr<const vector> xvalptr = dynamic_cast<const OptDualStdVector<Real,Element>&>(x).getVector(); 
+  uint dimension  = std_vec_->size();
+  for (uint i=0; i<dimension; i++) {
+    val += (*std_vec_)[i]*(*xvalptr)[i];
+  }
+  return val;
+}
+
 }; // class OptStdVector
 
 
@@ -232,6 +207,17 @@ const ROL::Vector<Real> & dual() const {
   return *dual_vec_;
 }
 
+Real apply( const ROL::Vector<Real> &x ) const {
+  Real val = 0;
+     
+  ROL::Ptr<const vector> xvalptr = dynamic_cast<const OptStdVector<Real,Element>&>(x).getVector(); 
+  uint dimension  = std_vec_->size();
+  for (uint i=0; i<dimension; i++) {
+    val += (*std_vec_)[i]*(*xvalptr)[i];
+  }
+  return val;
+}
+
 }; // class OptDualStdVector
 
 
@@ -244,7 +230,7 @@ const ROL::Vector<Real> & dual() const {
 
 int main(int argc, char *argv[]) {
 
-  Teuchos::GlobalMPISession mpiSession(&argc, &argv);
+  ROL::GlobalMPISession mpiSession(&argc, &argv);
 
   // This little trick lets us print to std::cout only if a (dummy) command-line argument is provided.
   int iprint     = argc - 1;
@@ -261,25 +247,14 @@ int main(int argc, char *argv[]) {
 
   try {
 
-    ROL::ZOO::Objective_Rosenbrock<RealT, OptStdVector<RealT>, OptDualStdVector<RealT> > obj;
+    // Define objective function.
+    ROL::Ptr<ROL::ZOO::Objective_Rosenbrock<RealT, OptStdVector<RealT>, OptDualStdVector<RealT>>> obj
+      = ROL::makePtr<ROL::ZOO::Objective_Rosenbrock<RealT, OptStdVector<RealT>, OptDualStdVector<RealT>>>();
     int dim = 100; // Set problem dimension. Must be even.
 
-    // Define algorithm.
-    ROL::ParameterList parlist;
-    std::string stepname = "Trust Region";
-    parlist.sublist("Step").sublist(stepname).set("Subproblem Solver", "Truncated CG");
-    parlist.sublist("General").sublist("Krylov").set("Iteration Limit",10);
-    parlist.sublist("General").sublist("Krylov").set("Relative Tolerance",1e-2);
-    parlist.sublist("General").sublist("Krylov").set("Absolute Tolerance",1e-4);
-    parlist.sublist("General").sublist("Secant").set("Use as Hessian",true);
-    parlist.sublist("Status Test").set("Gradient Tolerance",1.e-12);
-    parlist.sublist("Status Test").set("Step Tolerance",1.e-14);
-    parlist.sublist("Status Test").set("Iteration Limit",100);
-    ROL::Algorithm<RealT> algo(stepname,parlist);
-
     // Iteration Vector
-    ROL::Ptr<std::vector<RealT> > x_ptr = ROL::makePtr<std::vector<RealT>>(dim, 0.0);
-    ROL::Ptr<std::vector<RealT> > g_ptr = ROL::makePtr<std::vector<RealT>>(dim, 0.0);
+    ROL::Ptr<std::vector<RealT>> x_ptr = ROL::makePtr<std::vector<RealT>>(dim, 0.0);
+    ROL::Ptr<std::vector<RealT>> g_ptr = ROL::makePtr<std::vector<RealT>>(dim, 0.0);
     // Set Initial Guess
     for (int i=0; i<dim/2; i++) {
       (*x_ptr)[2*i]   = -1.2;
@@ -287,10 +262,10 @@ int main(int argc, char *argv[]) {
       (*g_ptr)[2*i]   = 0;
       (*g_ptr)[2*i+1] = 0;
     }
+    ROL::Ptr<OptStdVector<RealT>>     x = ROL::makePtr<OptStdVector<RealT>>(x_ptr);     // Iteration Vector
+    ROL::Ptr<OptDualStdVector<RealT>> g = ROL::makePtr<OptDualStdVector<RealT>>(g_ptr); // zeroed gradient vector in dual space
 
-    OptStdVector<RealT> x(x_ptr); // Iteration Vector
-    OptDualStdVector<RealT> g(g_ptr); // zeroed gradient vector in dual space
-
+    // Check vector.
     ROL::Ptr<std::vector<RealT> > aa_ptr = ROL::makePtr<std::vector<RealT>>(1, 1.0);
     OptDualStdVector<RealT> av(aa_ptr);
     ROL::Ptr<std::vector<RealT> > bb_ptr = ROL::makePtr<std::vector<RealT>>(1, 2.0);
@@ -299,16 +274,39 @@ int main(int argc, char *argv[]) {
     OptDualStdVector<RealT> cv(cc_ptr);
     std::vector<RealT> std_vec_err = av.checkVector(bv,cv,true,*outStream);
 
+    // Build optimization problem.
+    ROL::Ptr<ROL::Problem<RealT>> problem
+      = ROL::makePtr<ROL::Problem<RealT>>(obj,x,g);
+    problem->finalize(false,true,*outStream);
+
+    // Define algorithm.
+    ROL::ParameterList parlist;
+    std::string stepname = "Trust Region";
+    parlist.sublist("Step").set("Type",stepname);
+    //parlist.sublist("Step").sublist(stepname).sublist("Descent Method").set("Type","Quasi-Newton Method");
+    parlist.sublist("Step").sublist(stepname).set("Subproblem Solver", "Truncated CG");
+    parlist.sublist("General").set("Output Level",1);
+    parlist.sublist("General").sublist("Krylov").set("Relative Tolerance",1e-2);
+    parlist.sublist("General").sublist("Krylov").set("Iteration Limit",10);
+    parlist.sublist("General").sublist("Krylov").set("Absolute Tolerance",1e-4);
+    parlist.sublist("General").sublist("Secant").set("Type","Limited-Memory BFGS");
+    parlist.sublist("General").sublist("Secant").set("Use as Hessian",true);
+    parlist.sublist("Status Test").set("Gradient Tolerance",1.e-12);
+    parlist.sublist("Status Test").set("Step Tolerance",1.e-14);
+    parlist.sublist("Status Test").set("Iteration Limit",100);
+    ROL::Ptr<ROL::Solver<RealT>> solver
+      = ROL::makePtr<ROL::Solver<RealT>>(problem,parlist);
+
     // Run Algorithm
-    std::vector<std::string> output = algo.run(x,g, obj, true, *outStream);
+    solver->solve(*outStream);
 
     // Get True Solution
     ROL::Ptr<std::vector<RealT> > xtrue_ptr = ROL::makePtr<std::vector<RealT>>(dim, 1.0);
     OptStdVector<RealT> xtrue(xtrue_ptr); 
    
     // Compute Errors
-    x.axpy(-1.0, xtrue);
-    RealT abserr = x.norm();
+    x->axpy(-1.0, xtrue);
+    RealT abserr = x->norm();
     RealT relerr = abserr/xtrue.norm();
     *outStream << std::scientific << "\n   Absolute solution error: " << abserr;
     *outStream << std::scientific << "\n   Relative solution error: " << relerr;
@@ -322,7 +320,7 @@ int main(int argc, char *argv[]) {
       errorFlag += 1;
     }
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

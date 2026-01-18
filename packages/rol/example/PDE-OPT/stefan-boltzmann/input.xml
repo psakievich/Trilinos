@@ -28,7 +28,7 @@
     <Parameter name="Statistic Initial Guess"             type="double"  value="5.0"     />
     <Parameter name="Number of Samples"                   type="int"     value="4"       />
     <!-- OUTPUT -->
-    <Parameter name="Check Derivatives"                   type="bool"    value="true"    />
+    <Parameter name="Check Derivatives"                   type="bool"    value="false"    />
     <Parameter name="Print Mean Value State"              type="bool"    value="false"   />
     <Parameter name="Number of Output Samples"            type="int"     value="4"       />
     <!-- FINITE ELEMENT INFORMATION -->
@@ -63,12 +63,18 @@
 
   <!-- ===========  SOL PARAMETER SUBLIST  =========== -->
   <ParameterList name="SOL">
-    <Parameter name="Stochastic Component Type" type="string" value="Mean Value"   />
+    <Parameter name="Type" type="string" value="Mean Value"   />
     <!--
-      <Parameter name="Stochastic Component Type" type="string" value="Risk Averse"  />
-      <Parameter name="Stochastic Component Type" type="string" value="Risk Neutral" />
-      <Parameter name="Stochastic Component Type" type="string" value="Probability"  />
+      <Parameter name="Type" type="string" value="Risk Neutral" />
+      <Parameter name="Type" type="string" value="Risk Averse"  />
+      <Parameter name="Type" type="string" value="Probability"  />
     -->
+    <ParameterList name="Objective">
+      <Parameter name="Type" type="string" value="Mean Value"   />
+      <!--
+      <Parameter name="Type" type="string" value="Risk Neutral" />
+      -->
+    </ParameterList>
     <ParameterList name="Risk Measure">
       <Parameter name="Name" type="string" value="Entropic Risk" />
       <!--
@@ -125,6 +131,7 @@
   <ParameterList name="General">
     <Parameter name="Variable Objective Function"            type="bool"   value="false" />
     <Parameter name="Scale for Epsilon Active Sets"          type="double" value="1.0"   />
+    <Parameter name="Output Level"                           type="int"    value="1"     />
     <!-- ===========  USE INEXACT OBJECTIVE OR DERIVATIVES  =========== -->
     <Parameter name="Inexact Objective Function"             type="bool" value="false" />
     <Parameter name="Inexact Gradient"                       type="bool" value="false" />

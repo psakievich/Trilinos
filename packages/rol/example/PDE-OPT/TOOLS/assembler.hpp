@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  assembler.hpp
@@ -48,7 +14,7 @@
 #ifndef ROL_PDEOPT_ASSEMBLER_H
 #define ROL_PDEOPT_ASSEMBLER_H
 
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 #include "Teuchos_TimeMonitor.hpp"
 
 #include "Tpetra_MultiVector.hpp"
@@ -121,6 +87,10 @@ namespace ROL {
     ROL::Ptr<Teuchos::Time> AssembleQOIHessVec31        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI HessVec31");
     ROL::Ptr<Teuchos::Time> AssembleQOIHessVec32        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI HessVec32");
     ROL::Ptr<Teuchos::Time> AssembleQOIHessVec33        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI HessVec33");
+    ROL::Ptr<Teuchos::Time> AssembleQOIHessian11        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI Hessian11");
+    ROL::Ptr<Teuchos::Time> AssembleQOIHessian12        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI Hessian12");
+    ROL::Ptr<Teuchos::Time> AssembleQOIHessian21        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI Hessian21");
+    ROL::Ptr<Teuchos::Time> AssembleQOIHessian22        = Teuchos::TimeMonitor::getNewCounter("ROL::PDEOPT: Assemble QOI Hessian22");
   }
 }
 #endif
@@ -158,16 +128,16 @@ private:
   int myRank_, numProcs_;
 
   // Set in SetBasis.
-  std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> basisPtrs_;
+  std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> basisPtrs1_, basisPtrs2_;
 
   // Set in SetDiscretization.
   ROL::Ptr<MeshManager<Real>> meshMgr_;
-  ROL::Ptr<DofManager<Real>>  dofMgr_;
+  ROL::Ptr<DofManager<Real>>  dofMgr1_, dofMgr2_;
 
   // Set in SetParallelStructure.
   int numCells_;
-  Teuchos::Array<int> myCellIds_;
-  Teuchos::Array<int> cellOffsets_;
+  Teuchos::Array<GO> myCellIds_;
+  Teuchos::Array<GO> cellOffsets_;
   ROL::Ptr<const Tpetra::Map<>> myOverlapStateMap_;
   ROL::Ptr<const Tpetra::Map<>> myUniqueStateMap_;
   ROL::Ptr<const Tpetra::Map<>> myOverlapControlMap_;
@@ -192,6 +162,7 @@ private:
 
   // Finite element vectors and matrices for PDE.
   ROL::Ptr<Tpetra::MultiVector<>> pde_vecR_overlap_;
+  ROL::Ptr<Tpetra::MultiVector<>> pde_vecJ2_overlap_;
   ROL::Ptr<Tpetra::MultiVector<>> pde_vecJ3_overlap_;
   ROL::Ptr<Tpetra::MultiVector<>> pde_vecH13_overlap_;
   ROL::Ptr<Tpetra::MultiVector<>> pde_vecH23_overlap_;
@@ -206,13 +177,16 @@ private:
   ROL::Ptr<Tpetra::MultiVector<>> qoi_vecH22_overlap_;
   ROL::Ptr<Tpetra::MultiVector<>> qoi_vecH23_overlap_;
 
+  bool store_;
+
 private:
 
   void setCommunicator(const ROL::Ptr<const Teuchos::Comm<int>> &comm,
                        Teuchos::ParameterList &parlist,
                        std::ostream &outStream = std::cout);
   void setBasis(
-         const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs,
+         const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs1,
+         const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs2,
          Teuchos::ParameterList &parlist,
          std::ostream &outStream = std::cout);
   void setDiscretization(Teuchos::ParameterList &parlist,
@@ -233,16 +207,24 @@ private:
   Real assembleScalar(ROL::Ptr<Intrepid::FieldContainer<Real>> &val);
   void assembleFieldVector(ROL::Ptr<Tpetra::MultiVector<>> &v,
                            ROL::Ptr<Intrepid::FieldContainer<Real>> &val,
-                           ROL::Ptr<Tpetra::MultiVector<>> &vecOverlap);
+                           ROL::Ptr<Tpetra::MultiVector<>> &vecOverlap,
+                           const ROL::Ptr<DofManager<Real>> &dofMgr);
   void assembleParamVector(ROL::Ptr<std::vector<Real>> &v,
                            std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>> &val);
   void assembleFieldMatrix(ROL::Ptr<Tpetra::CrsMatrix<>> &M,
-                           ROL::Ptr<Intrepid::FieldContainer<Real>> &val);
+                           ROL::Ptr<Intrepid::FieldContainer<Real>> &val,
+                           const ROL::Ptr<DofManager<Real>> &dofMgr1,
+                           const ROL::Ptr<DofManager<Real>> &dofMgr2);
   void assembleParamFieldMatrix(ROL::Ptr<Tpetra::MultiVector<>> &M,
                                 std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>> &val,
-                                ROL::Ptr<Tpetra::MultiVector<>> &matOverlap);
+                                ROL::Ptr<Tpetra::MultiVector<>> &matOverlap,
+                                const ROL::Ptr<DofManager<Real>> &dofMgr);
   void assembleParamMatrix(ROL::Ptr<std::vector<std::vector<Real>>> &M,
-                           std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>> &val);
+                           std::vector<std::vector<ROL::Ptr<Intrepid::FieldContainer<Real>>>> &val,
+                           const ROL::Ptr<DofManager<Real>> &dofMgr);
+  void transformToFieldPattern(const ROL::Ptr<Intrepid::FieldContainer<Real>> &array,
+                               const ROL::Ptr<DofManager<Real>> &dofMgr1,
+                               const ROL::Ptr<DofManager<Real>> &dofMgr2 = ROL::nullPtr) const;
 
 public:
   // destructor
@@ -254,6 +236,19 @@ public:
           std::ostream &outStream = std::cout);
   // Constructor: Discretization set from MeshManager input
   Assembler(const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs,
+          const ROL::Ptr<MeshManager<Real>> &meshMgr,
+          const ROL::Ptr<const Teuchos::Comm<int>> &comm,
+          Teuchos::ParameterList &parlist,
+          std::ostream &outStream = std::cout);
+  // Constuctor: Discretization set from ParameterList
+  Assembler(const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs1,
+          const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs2,
+          const ROL::Ptr<const Teuchos::Comm<int>> &comm,
+          Teuchos::ParameterList &parlist,
+          std::ostream &outStream = std::cout);
+  // Constructor: Discretization set from MeshManager input
+  Assembler(const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs1,
+          const std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real>>>> &basisPtrs2,
           const ROL::Ptr<MeshManager<Real>> &meshMgr,
           const ROL::Ptr<const Teuchos::Comm<int>> &comm,
           Teuchos::ParameterList &parlist,
@@ -284,6 +279,30 @@ public:
                             const ROL::Ptr<const Tpetra::MultiVector<>> &u,
                             const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
                             const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyJacobian1(ROL::Ptr<Tpetra::MultiVector<>> &Jv1,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyAdjointJacobian1(ROL::Ptr<Tpetra::MultiVector<>> &Jv1,
+                                        const ROL::Ptr<PDE<Real>> &pde,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                        const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyJacobian2(ROL::Ptr<Tpetra::MultiVector<>> &Jv2,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyAdjointJacobian2(ROL::Ptr<Tpetra::MultiVector<>> &Jv2,
+                                        const ROL::Ptr<PDE<Real>> &pde,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                        const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                        const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
   void assemblePDEHessian11(ROL::Ptr<Tpetra::CrsMatrix<>> &H11,
                             const ROL::Ptr<PDE<Real>> &pde,
                             const ROL::Ptr<const Tpetra::MultiVector<>> &l,
@@ -338,6 +357,34 @@ public:
                             const ROL::Ptr<const Tpetra::MultiVector<>> &u,
                             const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
                             const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyHessian11(ROL::Ptr<Tpetra::MultiVector<>> &Hv,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &l,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyHessian12(ROL::Ptr<Tpetra::MultiVector<>> &Hv,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &l,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyHessian21(ROL::Ptr<Tpetra::MultiVector<>> &Hv,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &l,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assemblePDEapplyHessian22(ROL::Ptr<Tpetra::MultiVector<>> &Hv,
+                                 const ROL::Ptr<PDE<Real>> &pde,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &v,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &l,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                                 const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                                 const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
   /***************************************************************************/
   /* End of PDE assembly routines.                                           */
   /***************************************************************************/
@@ -588,6 +635,26 @@ public:
                             const ROL::Ptr<const Tpetra::MultiVector<>> &u,
                             const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
                             const ROL::Ptr<const std::vector<Real>> &z_param = ROL::nullPtr);
+  void assembleQoIHessian11(ROL::Ptr<Tpetra::CrsMatrix<>> &H11,
+                            const ROL::Ptr<QoI<Real>> &qoi,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                            const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assembleQoIHessian12(ROL::Ptr<Tpetra::CrsMatrix<>> &H12,
+                            const ROL::Ptr<QoI<Real>> &qoi,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                            const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assembleQoIHessian21(ROL::Ptr<Tpetra::CrsMatrix<>> &H21,
+                            const ROL::Ptr<QoI<Real>> &qoi,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                            const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
+  void assembleQoIHessian22(ROL::Ptr<Tpetra::CrsMatrix<>> &H22,
+                            const ROL::Ptr<QoI<Real>> &qoi,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                            const ROL::Ptr<const std::vector<Real>> & z_param = ROL::nullPtr);
   /***************************************************************************/
   /* End QoI assembly routines                                               */
   /***************************************************************************/
@@ -638,6 +705,14 @@ public:
                           const std::string &filename) const;
   void inputTpetraVector(ROL::Ptr<Tpetra::MultiVector<>> &vec,
                          const std::string &filename) const;
+  void printDataPDE(const ROL::Ptr<PDE<Real>> &pde,
+                    const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                    const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                    const ROL::Ptr<const std::vector<Real>> &z_param = ROL::nullPtr) const;
+  void printCellAveragesPDE(const ROL::Ptr<PDE<Real>> &pde,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &u,
+                            const ROL::Ptr<const Tpetra::MultiVector<>> &z = ROL::nullPtr,
+                            const ROL::Ptr<const std::vector<Real>> &z_param = ROL::nullPtr) const;
   void serialPrintStateEdgeField(const ROL::Ptr<const Tpetra::MultiVector<>> &u,
                                  const ROL::Ptr<FieldHelper<Real>> &fieldHelper,
                                  const std::string &filename,
@@ -663,7 +738,8 @@ public:
   /* Accessor routines.                                                      */
   /***************************************************************************/
   const ROL::Ptr<DofManager<Real>> getDofManager(void) const;
-  Teuchos::Array<int> getCellIds(void) const;
+  const ROL::Ptr<DofManager<Real>> getDofManager2(void) const;
+  Teuchos::Array<GO> getCellIds(void) const;
   /***************************************************************************/
   /* End of accessor routines.                                               */
   /***************************************************************************/

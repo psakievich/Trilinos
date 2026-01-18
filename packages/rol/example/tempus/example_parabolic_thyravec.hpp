@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_parabolic.cpp
@@ -867,7 +833,7 @@ class Objective_ParabolicControl : public ROL::DynamicObjective<Real> {
 private:
   Real alpha_;
   Real theta_;
-  uint nx_;
+  Teuchos_Ordinal nx_;
   Real dx_;
   Real dt_;
   int  type_;
@@ -882,7 +848,7 @@ private:
     const Thyra::ConstDetachedVectorView<Real> y(y_vb);
     Real ip(0);
     Real c = ((x.subDim()==nx_) ? four : two);
-    for (uint i=0; i<x.subDim(); i++) {
+    for (Teuchos_Ordinal i=0; i<x.subDim(); i++) {
       if ( i == 0 ) {
         ip += dx_/six*(c*x[i] + x[i+1])*y[i];
       }
@@ -904,7 +870,7 @@ private:
     Real c = ((u.subDim()==nx_) ? four : two);
     { // scope for Mu eval
       Thyra::DetachedVectorView<Real> Mu(Mu_ptr);
-      for (uint i=0; i<u.subDim(); i++) {
+      for (Teuchos_Ordinal i=0; i<u.subDim(); i++) {
         if ( i == 0 ) {
           Mu[i] = dx_/six*(c*u[i] + u[i+1]);
         }
@@ -975,7 +941,7 @@ public:
     { // scope for uOld, uNew eval
       Thyra::DetachedVectorView<Real> uOld(uOld_ptr);
       Thyra::DetachedVectorView<Real> uNew(uNew_ptr);
-      for (uint n = 0; n < nx_; n++) {
+      for (Teuchos_Ordinal n = 0; n < nx_; n++) {
         target = evaluate_target(static_cast<Real>(n)*dx_);
         uOld[n] = uo[n] - target;
         uNew[n] = un[n] - target;
@@ -1001,7 +967,7 @@ public:
     Real target(0);
     { // scope for uDiff
       Thyra::DetachedVectorView<Real> uDiff(uDiff_ptr);
-      for (uint n = 0; n < nx_; n++) {
+      for (Teuchos_Ordinal n = 0; n < nx_; n++) {
         target = evaluate_target(static_cast<Real>(n)*dx_);
         uDiff[n] = uo[n] - target;
       }
@@ -1024,7 +990,7 @@ public:
     Real target(0);
     { // scope for uDiff eval
       Thyra::DetachedVectorView<Real> uDiff(uDiff_ptr);
-      for (uint n = 0; n < nx_; n++) {
+      for (Teuchos_Ordinal n = 0; n < nx_; n++) {
         target = evaluate_target(static_cast<Real>(n)*dx_);
         uDiff[n] = un[n] - target;
       }

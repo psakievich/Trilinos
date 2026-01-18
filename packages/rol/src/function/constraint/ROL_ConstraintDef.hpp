@@ -1,46 +1,11 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
-
 
 #ifndef ROL_CONSTRAINT_DEF_H
 #define ROL_CONSTRAINT_DEF_H
@@ -71,7 +36,7 @@ void Constraint<Real>::applyJacobian(Vector<Real> &jv,
   ROL::Ptr<Vector<Real> > xnew = x.clone();
   xnew->set(x);
   xnew->axpy(h,v);
-  this->update(*xnew);
+  this->update(*xnew,UpdateType::Temp);
 
   // Compute constraint at x + h*v.
   jv.zero();
@@ -121,11 +86,12 @@ void Constraint<Real>::applyAdjointJacobian(Vector<Real> &ajv,
     h = std::max(one,x.norm()/ex->norm())*tol;
     xnew->set(x);
     xnew->axpy(h,*ex);
-    this->update(*xnew);
+    this->update(*xnew,UpdateType::Temp);
     this->value(*cnew,*xnew,ctol);
     cnew->axpy(-one,*c0);
     cnew->scale(one/h);
-    ajv.axpy(cnew->dot(v.dual()),*eajv);
+    //ajv.axpy(cnew->dot(v.dual()),*eajv);
+    ajv.axpy(cnew->apply(v),*eajv);
   }
 }
 
@@ -179,7 +145,7 @@ void Constraint<Real>::applyAdjointHessian(Vector<Real> &huv,
   ROL::Ptr<Vector<Real> > xnew = x.clone();
   xnew->set(x);
   xnew->axpy(h,v);
-  update(*xnew);
+  update(*xnew,UpdateType::Temp);
 
   // Compute constraint Jacobian at x + h*v.
   huv.zero();
@@ -215,19 +181,19 @@ std::vector<Real> Constraint<Real>::solveAugmentedSystem(Vector<Real> &v1,
   v1.zero(); v2.zero();
 
   // Allocate static memory.
-  ROL::Ptr<Vector<Real> > r1 = b1.clone();
-  ROL::Ptr<Vector<Real> > r2 = b2.clone();
-  ROL::Ptr<Vector<Real> > z1 = v1.clone();
-  ROL::Ptr<Vector<Real> > z2 = v2.clone();
-  ROL::Ptr<Vector<Real> > w1 = b1.clone();
-  ROL::Ptr<Vector<Real> > w2 = b2.clone();
-  std::vector<ROL::Ptr<Vector<Real> > > V1;
-  std::vector<ROL::Ptr<Vector<Real> > > V2;
-  ROL::Ptr<Vector<Real> > V2temp = b2.clone();
-  std::vector<ROL::Ptr<Vector<Real> > > Z1;
-  std::vector<ROL::Ptr<Vector<Real> > > Z2;
-  ROL::Ptr<Vector<Real> > w1temp = b1.clone();
-  ROL::Ptr<Vector<Real> > Z2temp = v2.clone();
+  Ptr<Vector<Real>> r1 = b1.clone();
+  Ptr<Vector<Real>> r2 = b2.clone();
+  Ptr<Vector<Real>> z1 = v1.clone();
+  Ptr<Vector<Real>> z2 = v2.clone();
+  Ptr<Vector<Real>> w1 = b1.clone();
+  Ptr<Vector<Real>> w2 = b2.clone();
+  std::vector<Ptr<Vector<Real>>> V1;
+  std::vector<Ptr<Vector<Real>>> V2;
+  Ptr<Vector<Real>> V2temp = b2.clone();
+  std::vector<Ptr<Vector<Real>>> Z1;
+  std::vector<Ptr<Vector<Real>>> Z2;
+  Ptr<Vector<Real>> w1temp = b1.clone();
+  Ptr<Vector<Real>> Z2temp = v2.clone();
 
   std::vector<Real> res(m+1, zero); 
   LA::Matrix<Real> H(m+1,m);
@@ -236,13 +202,14 @@ std::vector<Real> Constraint<Real>::solveAugmentedSystem(Vector<Real> &v1,
   LA::Vector<Real> s(m+1);
   LA::Vector<Real> y(m+1);
   LA::Vector<Real> cnorm(m);
-  ROL::LAPACK<int, Real> lapack;
+  LAPACK<int, Real> lapack;
 
   // Compute initial residual.
-  applyAdjointJacobian(*r1, v2, x, zerotol);
-  r1->scale(-one); r1->axpy(-one, v1.dual()); r1->plus(b1);
-  applyJacobian(*r2, v1, x, zerotol);
-  r2->scale(-one); r2->plus(b2);
+  //applyAdjointJacobian(*r1, v2, x, zerotol);
+  //r1->scale(-one); r1->axpy(-one, v1.dual()); r1->plus(b1);
+  //applyJacobian(*r2, v1, x, zerotol);
+  //r2->scale(-one); r2->plus(b2);
+  r1->set(b1); r2->set(b2);
   res[0] = std::sqrt(r1->dot(*r1) + r2->dot(*r2));
 
   // Check if residual is identically zero.
@@ -329,18 +296,19 @@ std::vector<Real> Constraint<Real>::solveAugmentedSystem(Vector<Real> &v1,
     }
 
     // Evaluate special stopping condition.
-    tol = tol;
+    //tol = ???;
 
-    std::cout << "  " << i+1 << ": " << res[i+1]/res[0] << std::endl;
+//    std::cout << "  " << i+1 << ": " << res[i+1]/res[0] << std::endl;
     if (res[i+1] <= tol) {
-      std::cout << "  solved in " << i+1 << " iterations to " << res[i+1] << " (" << res[i+1]/res[0] << ")" << std::endl;
+//      std::cout << "  solved in " << i+1 << " iterations to " << res[i+1] << " (" << res[i+1]/res[0] << ")" << std::endl;
       // Update solution vector.
-      v1.plus(*z1);
-      v2.plus(*z2);
+      //v1.plus(*z1);
+      //v2.plus(*z2);
       break;
     }
 
   } // for (int i=0; i++; i<m)
+  v1.set(*z1); v2.set(*z2);
 
   res.resize(i+2);
 
@@ -408,7 +376,7 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyJacobian(const Vecto
 
   // Compute constraint value at x.
   ROL::Ptr<Vector<Real> > c = jv.clone();
-  this->update(x);
+  this->update(x,UpdateType::Temp);
   this->value(*c, x, tol);
 
   // Compute (Jacobian at x) times (vector v).
@@ -435,7 +403,7 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyJacobian(const Vecto
        xnew->axpy(eta*shifts[order-1][j], v);
 
        if( weights[order-1][j+1] != 0 ) {
-           this->update(*xnew);
+           this->update(*xnew,UpdateType::Temp);
            this->value(*cnew,*xnew,tol);
            cdif->axpy(weights[order-1][j+1],*cnew);    
        }
@@ -515,7 +483,7 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyAdjointJacobian(cons
   oldFormatState.copyfmt(outStream);
 
   // Compute constraint value at x.
-  this->update(x);
+  this->update(x,UpdateType::Temp);
   this->value(*c0, x, tol);
 
   // Compute (Jacobian at x) times (vector v).
@@ -531,11 +499,12 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyAdjointJacobian(cons
       eajv = ajv.basis(j);
       xnew->set(x);
       xnew->axpy(eta,*ex);
-      this->update(*xnew);
+      this->update(*xnew,UpdateType::Temp);
       this->value(*cnew,*xnew,tol);
       cnew->axpy(-one,*c0);
       cnew->scale(one/eta);
-      ajv1->axpy(cnew->dot(v.dual()),*eajv);
+      //ajv1->axpy(cnew->dot(v.dual()),*eajv);
+      ajv1->axpy(cnew->apply(v),*eajv);
     }
 
     // Compute norms of Jacobian-vector products, finite-difference approximations, and error.
@@ -592,11 +561,14 @@ Real Constraint<Real>::checkAdjointConsistencyJacobian(const Vector<Real> &w,
   ROL::Ptr<Vector<Real> > Jv = dualw.clone();
   ROL::Ptr<Vector<Real> > Jw = dualv.clone();
   
+  this->update(x,UpdateType::Temp);
   applyJacobian(*Jv,v,x,tol);
   applyAdjointJacobian(*Jw,w,x,tol);
 
-  Real vJw = v.dot(Jw->dual());
-  Real wJv = w.dot(Jv->dual());
+  //Real vJw = v.dot(Jw->dual());
+  Real vJw = v.apply(*Jw);
+  //Real wJv = w.dot(Jv->dual());
+  Real wJv = w.apply(*Jv);
 
   Real diff = std::abs(wJv-vJw);
 
@@ -662,7 +634,7 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyAdjointHessian(const
   oldFormatState.copyfmt(outStream);
 
   // Apply adjoint Jacobian to u.
-  this->update(x);
+  this->update(x,UpdateType::Temp);
   this->applyAdjointJacobian(*AJu, u, x, tol);
 
   // Apply adjoint Hessian at x, in direction v, to u.
@@ -684,7 +656,7 @@ std::vector<std::vector<Real> > Constraint<Real>::checkApplyAdjointHessian(const
         xnew->axpy(eta*shifts[order-1][j],v); 
 
         if( weights[order-1][j+1] != 0 ) {    
-            this->update(*xnew);
+            this->update(*xnew,UpdateType::Temp);
             this->applyAdjointJacobian(*AJnew, u, *xnew, tol);
             AJdif->axpy(weights[order-1][j+1],*AJnew);
         }

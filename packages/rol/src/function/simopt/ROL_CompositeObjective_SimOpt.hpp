@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_COMPOSITEOBJECTIVE_SIMOPT_H
@@ -139,7 +105,8 @@ private:
     computeGradient1(u,z,tol);
     int size = obj_vec_.size();
     for (int i = 0; i < size; ++i) {
-      (*obj_gv_)[i] = vec_grad1_[i]->dot(v.dual());
+      //(*obj_gv_)[i] = vec_grad1_[i]->dot(v.dual());
+      (*obj_gv_)[i] = vec_grad1_[i]->apply(v);
       obj_vec_[i]->hessVec_11(*(vec_hess1_[i]),v,u,z,tol);
     }
     std_obj_->hessVec(*(obj_hess_vec_),*(obj_gv_vec_),*(obj_value_vec_),tol);
@@ -150,7 +117,8 @@ private:
     computeGradient2(u,z,tol);
     int size = obj_vec_.size();
     for (int i = 0; i < size; ++i) {
-      (*obj_gv_)[i] = vec_grad2_[i]->dot(v.dual());
+      //(*obj_gv_)[i] = vec_grad2_[i]->dot(v.dual());
+      (*obj_gv_)[i] = vec_grad2_[i]->apply(v);
       obj_vec_[i]->hessVec_12(*(vec_hess1_[i]),v,u,z,tol);
     }
     std_obj_->hessVec(*(obj_hess_vec_),*(obj_gv_vec_),*(obj_value_vec_),tol);
@@ -161,7 +129,8 @@ private:
     computeGradient2(u,z,tol);
     int size = obj_vec_.size();
     for (int i = 0; i < size; ++i) {
-      (*obj_gv_)[i] = vec_grad1_[i]->dot(v.dual());
+      //(*obj_gv_)[i] = vec_grad1_[i]->dot(v.dual());
+      (*obj_gv_)[i] = vec_grad1_[i]->apply(v);
       obj_vec_[i]->hessVec_21(*(vec_hess2_[i]),v,u,z,tol);
     }
     std_obj_->hessVec(*(obj_hess_vec_),*(obj_gv_vec_),*(obj_value_vec_),tol);
@@ -171,7 +140,8 @@ private:
     computeGradient2(u,z,tol);
     int size = obj_vec_.size();
     for (int i = 0; i < size; ++i) {
-      (*obj_gv_)[i] = vec_grad2_[i]->dot(v.dual());
+      //(*obj_gv_)[i] = vec_grad2_[i]->dot(v.dual());
+      (*obj_gv_)[i] = vec_grad2_[i]->apply(v);
       obj_vec_[i]->hessVec_22(*(vec_hess2_[i]),v,u,z,tol);
     }
     std_obj_->hessVec(*(obj_hess_vec_),*(obj_gv_vec_),*(obj_value_vec_),tol);
@@ -202,6 +172,18 @@ public:
     isGradientComputed_  = (flag ? false : isGradientComputed_);
     isGradient1Computed_ = (flag ? false : isGradient1Computed_);
     isGradient2Computed_ = (flag ? false : isGradient2Computed_);
+  }
+
+  void update( const Vector<Real> &u, const Vector<Real> &z, UpdateType type, int iter = -1 ) {
+    int size = obj_vec_.size();
+    for (int i = 0; i < size; ++i) {
+      obj_vec_[i]->update(u,z,type,iter);
+    }
+    // Do something smarter here
+    isValueComputed_     = false;
+    isGradientComputed_  = false;
+    isGradient1Computed_ = false;
+    isGradient2Computed_ = false;
   }
 
   Real value( const Vector<Real> &u, const Vector<Real> &z, Real &tol ) {

@@ -1,48 +1,16 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_OPTIMIZATIONPROBLEM_HPP
 #define ROL_OPTIMIZATIONPROBLEM_HPP
+
+#include <utility>
 
 #include "ROL_ConstraintManager.hpp"
 #include "ROL_SlacklessObjective.hpp"
@@ -65,6 +33,19 @@
 #include "ROL_SimulatedVector.hpp"
 
 namespace ROL {
+
+template <class Real>
+struct OptimizationProblemCheckData {
+  std::vector<Real> checkSolutionVector;
+  std::vector<std::vector<Real>> checkGradient;
+  std::vector<std::vector<Real>> checkHessVec;
+  std::vector<Real> checkHessSym;
+  std::vector<Real> checkMultiplierVector;
+  std::vector<std::vector<Real>> checkApplyJacobian;
+  std::vector<std::vector<Real>> checkApplyAdjointJacobian;
+  std::vector<std::vector<Real>> checkApplyAdjointHessian;
+  Real checkAdjointConsistencyJacobian;
+};
 
 /* Represents optimization problems in Type-EB form 
  */
@@ -655,7 +636,7 @@ public:
                               const Ptr<SampleGenerator<Real>> &gsampler = nullPtr,
                               const Ptr<SampleGenerator<Real>> &hsampler = nullPtr) {
     // Determine Stochastic Objective Type
-    std::string type = parlist.sublist("SOL").get("Stochastic Component Type","Risk Neutral");
+    std::string type = parlist.sublist("SOL").get("Type","Risk Neutral");
     if ( type == "Risk Neutral" ) {
       bool storage = parlist.sublist("SOL").get("Store Sampled Value and Gradient",true);
       setRiskNeutralObjective(vsampler,gsampler,hsampler,storage);
@@ -760,7 +741,7 @@ public:
     }
     for (int i = 0; i < nc; ++i) {
       if (xsampler[i] != nullPtr) {
-        std::string type = parlist[i].sublist("SOL").get("Stochastic Component Type","Risk Neutral");
+        std::string type = parlist[i].sublist("SOL").get("Type","Risk Neutral");
         if ( type == "Risk Neutral" ) {
           setRiskNeutralEquality(xsampler[i],cbman[i],i);
         }
@@ -902,7 +883,7 @@ public:
     }
     for (int i = 0; i < nc; ++i) {
       if ( xsampler[i] != nullPtr ) {
-        std::string type = parlist[i].sublist("SOL").get("Stochastic Component Type","Risk Neutral");
+        std::string type = parlist[i].sublist("SOL").get("Type","Risk Neutral");
         if ( type == "Risk Neutral" ) {
           setRiskNeutralInequality(xsampler[i],cbman[i],i);
         }
@@ -1026,6 +1007,16 @@ public:
                             Vector<Real> &y, // Optimization space
                             Vector<Real> &u, // Optimization space
                             std::ostream &outStream = std::cout ) {
+    OptimizationProblemCheckData<Real> data;
+    checkSolutionVector(data,x,y,u,outStream);
+    
+  }
+
+  void checkSolutionVector( OptimizationProblemCheckData<Real> &data,
+                            Vector<Real> &x, // Optimization space
+                            Vector<Real> &y, // Optimization space
+                            Vector<Real> &u, // Optimization space
+                            std::ostream &outStream = std::cout ) {
     initialize(INTERMEDIATE_obj_,INTERMEDIATE_sol_,INTERMEDIATE_bnd_,
                INTERMEDIATE_econ_,INTERMEDIATE_emul_,
                INTERMEDIATE_icon_,INTERMEDIATE_imul_,INTERMEDIATE_ibnd_);
@@ -1033,7 +1024,7 @@ public:
       outStream << "\nPerforming OptimizationProblem diagnostics." << std::endl << std::endl;
 
       outStream << "Checking vector operations in optimization vector space X." << std::endl;
-      x.checkVector(y,u,true,outStream);
+      data.checkSolutionVector = x.checkVector(y,u,true,outStream);
     }
   }
 
@@ -1043,20 +1034,43 @@ public:
                        std::ostream &outStream = std::cout,
                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
                        const int order = 1 ) {
+    OptimizationProblemCheckData<Real> data;
+    checkObjective(data,x,u,v,outStream,numSteps,order);
+  }
+
+  void checkObjective( OptimizationProblemCheckData<Real> &data,
+                       Vector<Real> &x, // Optimization space
+                       Vector<Real> &u, // Optimization space
+                       Vector<Real> &v, // Optimization space
+                       std::ostream &outStream = std::cout,
+                       const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                       const int order = 1 ) {
     initialize(INTERMEDIATE_obj_,INTERMEDIATE_sol_,INTERMEDIATE_bnd_,
                INTERMEDIATE_econ_,INTERMEDIATE_emul_,
                INTERMEDIATE_icon_,INTERMEDIATE_imul_,INTERMEDIATE_ibnd_);
     if (obj_ != nullPtr) {
-      outStream << "\nPerforming OptimizationProblem diagnostics." << std::endl << std::endl;
-
+      outStream << std::endl << "Performing OptimizationProblem diagnostics."
+                << std::endl << std::endl;
       outStream << "Checking objective function." << std::endl;
-      obj_->checkGradient(x,v,true,outStream,numSteps,order); outStream << std::endl;
-      obj_->checkHessVec(x,u,true,outStream,numSteps,order);  outStream << std::endl;
-      obj_->checkHessSym(x,u,v,true,outStream);               outStream << std::endl;
+      data.checkGradient = obj_->checkGradient(x,v,true,outStream,numSteps,order);
+      outStream << std::endl;
+      data.checkHessVec  = obj_->checkHessVec(x,u,true,outStream,numSteps,order);
+      outStream << std::endl;
+      data.checkHessSym  = obj_->checkHessSym(x,u,v,true,outStream);
+      outStream << std::endl;
     }
   }
 
   void checkMultiplierVector( Vector<Real> &w, // Dual constraint space
+                              Vector<Real> &q, // Dual constraint space
+                              Vector<Real> &l, // Dual constraint space
+                              std::ostream &outStream = std::cout ) {
+    OptimizationProblemCheckData<Real> data;
+    checkMultiplierVector(data,w,q,l,outStream);
+  }
+
+  void checkMultiplierVector( OptimizationProblemCheckData<Real> &data,
+                              Vector<Real> &w, // Dual constraint space
                               Vector<Real> &q, // Dual constraint space
                               Vector<Real> &l, // Dual constraint space
                               std::ostream &outStream = std::cout ) {
@@ -1067,11 +1081,24 @@ public:
       outStream << "\nPerforming OptimizationProblem diagnostics." << std::endl << std::endl;
 
       outStream << "Checking vector operations in constraint multiplier space C*." << std::endl;
-      l.checkVector(q,w,true,outStream);
+      data.checkMultiplierVector = l.checkVector(q,w,true,outStream);
     }
   }
 
   void checkConstraint( Vector<Real> &x, // Optimization space
+                        Vector<Real> &u, // Optimization space
+                        Vector<Real> &v, // Optimization space
+                        Vector<Real> &c, // Constraint space
+                        Vector<Real> &l, // Dual constraint space
+                        std::ostream &outStream = std::cout,
+                        const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+                        const int order = 1 ) {
+    OptimizationProblemCheckData<Real> data;
+    checkConstraint(data,x,u,v,c,l,outStream,numSteps,order);
+  }
+
+  void checkConstraint( OptimizationProblemCheckData<Real> &data,
+                        Vector<Real> &x, // Optimization space
                         Vector<Real> &u, // Optimization space
                         Vector<Real> &v, // Optimization space
                         Vector<Real> &c, // Constraint space
@@ -1086,14 +1113,25 @@ public:
       outStream << "\nPerforming OptimizationProblem diagnostics." << std::endl << std::endl;
 
       outStream << "Checking equality constraint." << std::endl;
-      con_->checkApplyJacobian(x,v,c,true,outStream,numSteps,order);         outStream << std::endl;
-      con_->checkAdjointConsistencyJacobian(l,u,x,true,outStream);           outStream << std::endl;
-      con_->checkApplyAdjointHessian(x,l,v,u,true,outStream,numSteps,order); outStream << std::endl;  
+      data.checkApplyJacobian = con_->checkApplyJacobian(x,v,c,true,outStream,numSteps,order);
+      outStream << std::endl;
+      data.checkAdjointConsistencyJacobian = con_->checkAdjointConsistencyJacobian(l,u,x,true,outStream);
+      outStream << std::endl;
+      data.checkApplyAdjointHessian = con_->checkApplyAdjointHessian(x,l,v,u,true,outStream,numSteps,order);
+      outStream << std::endl;  
     }
   }
 
   // Check derivatives, and consistency 
   void check( std::ostream &outStream = std::cout,
+              const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
+              const int order = 1 ) {
+    OptimizationProblemCheckData<Real> data;
+    check(data,outStream,numSteps,order);
+  }
+
+  void check( OptimizationProblemCheckData<Real> &data,
+              std::ostream &outStream = std::cout,
               const int numSteps = ROL_NUM_CHECKDERIV_STEPS,
               const int order = 1 ) {
     initialize(INTERMEDIATE_obj_,INTERMEDIATE_sol_,INTERMEDIATE_bnd_,
@@ -1107,8 +1145,8 @@ public:
       u = sol_->clone(); u->randomize();
       v = sol_->clone(); v->randomize();
 
-      checkSolutionVector(*x,*y,*u,outStream);
-      checkObjective(*x,*u,*v,outStream,numSteps,order);
+      checkSolutionVector(data,*x,*y,*u,outStream);
+      checkObjective(data,*x,*u,*v,outStream,numSteps,order);
     }
     catch (std::exception &e) {
 //      throw Exception::NotImplemented(">>> ROL::OptimizationProblem::check: Elementwise is not implemented for optimization space vectors");
@@ -1122,8 +1160,8 @@ public:
         w = mul_->clone();        w->randomize();
         q = mul_->clone();        q->randomize();
 
-        checkMultiplierVector(*w,*q,*l,outStream);
-        checkConstraint(*x,*u,*v,*c,*l,outStream,numSteps,order);
+        checkMultiplierVector(data,*w,*q,*l,outStream);
+        checkConstraint(data,*x,*u,*v,*c,*l,outStream,numSteps,order);
       }
       catch (std::exception &e) {
         throw Exception::NotImplemented(">>> ROL::OptimizationProblem::check: Elementwise is not implemented for constraint space vectors");
@@ -1132,6 +1170,16 @@ public:
   }
 
 }; // class OptimizationProblem
+
+
+template<template<typename> class V, 
+         template<typename> class Obj, 
+         typename Real,typename P=Ptr<OptimizationProblem<Real>>,typename...Args>
+inline typename std::enable_if<std::is_base_of<Objective<Real>,Obj<Real>>::value &&
+                               std::is_base_of<Vector<Real>, V<Real>>::value,P>::type
+make_OptimizationProblem( const Ptr<Obj<Real>> &obj, const Ptr<V<Real>> &x, Args&&...args) {
+  return makePtr<OptimizationProblem<Real>>(obj,x,std::forward<Args>(args)...);
+}
 
 }  // namespace ROL
 

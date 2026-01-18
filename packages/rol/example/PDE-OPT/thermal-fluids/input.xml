@@ -49,11 +49,11 @@
 
   <!-- ===========  SOL PARAMETER SUBLIST  =========== -->
   <ParameterList name="SOL">
-    <Parameter name="Stochastic Component Type" type="string" value="Mean Value"   />
+    <Parameter name="Type" type="string" value="Mean Value"   />
     <!--
-    <Parameter name="Stochastic Component Type" type="string" value="Risk Averse"  />
-    <Parameter name="Stochastic Component Type" type="string" value="Risk Neutral" />
-    <Parameter name="Stochastic Component Type" type="string" value="Probability"  />
+    <Parameter name="Type" type="string" value="Risk Averse"  />
+    <Parameter name="Type" type="string" value="Risk Neutral" />
+    <Parameter name="Type" type="string" value="Probability"  />
     -->
     <ParameterList name="Risk Measure">
       <Parameter name="Name" type="string" value="Entropic Risk" />
@@ -110,6 +110,7 @@
 
   <!-- ===========  BEGIN GENERAL INPUT PARAMETER SUBLIST  =========== -->
   <ParameterList name="General">
+    <Parameter name="Output Level"                           type="int"    value="1"     />
     <Parameter name="Variable Objective Function"            type="bool"   value="false" />
     <Parameter name="Scale for Epsilon Active Sets"          type="double" value="1.0"   />
     <!-- ===========  USE INEXACT OBJECTIVE OR DERIVATIVES  =========== -->

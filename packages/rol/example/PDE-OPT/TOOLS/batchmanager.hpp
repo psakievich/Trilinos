@@ -1,3 +1,12 @@
+// @HEADER
+// *****************************************************************************
+//               Rapid Optimization Library (ROL) Package
+//
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
+// @HEADER
+
 #ifndef PDEOPT_BATHCMANAGER_HPP
 #define PDEOPT_BATHCMANAGER_HPP
 
@@ -15,7 +24,7 @@ private:
   typedef PDE_OptVector<Real,LO,GO,Node>       OptVector;
 
 public:
-  PDE_OptVector_BatchManager(const ROL::Ptr<const Teuchos::Comm<GO> > &comm)
+  PDE_OptVector_BatchManager(const ROL::Ptr<const Teuchos::Comm<int> > &comm)
     : ROL::TeuchosBatchManager<Real,GO>(comm) {}
 
   using ROL::TeuchosBatchManager<Real,GO>::sumAll;

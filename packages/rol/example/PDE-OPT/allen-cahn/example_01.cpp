@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  example_01.cpp
@@ -46,9 +12,7 @@
 */
 
 #include "Teuchos_Comm.hpp"
-#include "ROL_Stream.hpp"
-#include "Teuchos_GlobalMPISession.hpp"
-#include "Teuchos_XMLParameterListHelpers.hpp"
+#include "ROL_GlobalMPISession.hpp"
 
 #include "Tpetra_Core.hpp"
 #include "Tpetra_Version.hpp"
@@ -56,6 +20,8 @@
 #include <iostream>
 #include <algorithm>
 
+#include "ROL_Stream.hpp"
+#include "ROL_Solver.hpp"
 #include "ROL_Reduced_Objective_SimOpt.hpp"
 #include "ROL_BoundConstraint_SimOpt.hpp"
 #include "ROL_Bounds.hpp"
@@ -67,8 +33,6 @@
 #include "pde_allen_cahn.hpp"
 #include "obj_allen_cahn.hpp"
 
-#include "ROL_OptimizationSolver.hpp"
-
 typedef double RealT;
 
 int main(int argc, char *argv[]) {
@@ -78,7 +42,7 @@ int main(int argc, char *argv[]) {
   ROL::nullstream bhs; // outputs nothing
 
   /*** Initialize communicator. ***/
-  Teuchos::GlobalMPISession mpiSession (&argc, &argv, &bhs);
+  ROL::GlobalMPISession mpiSession (&argc, &argv, &bhs);
   ROL::Ptr<const Teuchos::Comm<int> > comm
     = Tpetra::getDefaultComm();
   const int myRank = comm->getRank();
@@ -99,25 +63,25 @@ int main(int argc, char *argv[]) {
     Teuchos::updateParametersFromXmlFile( filename, parlist.ptr() );
 
     /*** Initialize main data structure. ***/
-    ROL::Ptr<MeshManager<RealT> > meshMgr
-      = ROL::makePtr<MeshManager_Rectangle<RealT>>(*parlist);
+    ROL::Ptr<MeshManager<RealT>>
+      meshMgr = ROL::makePtr<MeshManager_Rectangle<RealT>>(*parlist);
     // Initialize PDE describe Poisson's equation
-    ROL::Ptr<PDE_Allen_Cahn<RealT> > pde
-      = ROL::makePtr<PDE_Allen_Cahn<RealT>>(*parlist);
-    ROL::Ptr<PDE_Constraint<RealT> > con
-      = ROL::makePtr<PDE_Constraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
-    const ROL::Ptr<Assembler<RealT> > assembler = con->getAssembler();
+    ROL::Ptr<PDE_Allen_Cahn<RealT>>
+      pde = ROL::makePtr<PDE_Allen_Cahn<RealT>>(*parlist);
+    ROL::Ptr<PDE_Constraint<RealT>>
+      con = ROL::makePtr<PDE_Constraint<RealT>>(pde,meshMgr,comm,*parlist,*outStream);
+    const ROL::Ptr<Assembler<RealT>> assembler = con->getAssembler();
     assembler->printMeshData(*outStream);
     con->setSolveParameters(*parlist);
 
     /*************************************************************************/
     /***************** BUILD VECTORS *****************************************/
     /*************************************************************************/
-    ROL::Ptr<Tpetra::MultiVector<> >  u_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  p_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  r_ptr = assembler->createResidualVector();
-    ROL::Ptr<Tpetra::MultiVector<> >  z_ptr = assembler->createControlVector();
-    ROL::Ptr<ROL::Vector<RealT> > up, pp, rp, zp;
+    ROL::Ptr<Tpetra::MultiVector<>>  u_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>>  p_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>>  r_ptr = assembler->createResidualVector();
+    ROL::Ptr<Tpetra::MultiVector<>>  z_ptr = assembler->createControlVector();
+    ROL::Ptr<ROL::Vector<RealT>> up, pp, rp, zp;
     u_ptr->randomize();  //u_ptr->putScalar(static_cast<RealT>(1));
     p_ptr->randomize();  //p_ptr->putScalar(static_cast<RealT>(1));
     r_ptr->randomize();  //r_ptr->putScalar(static_cast<RealT>(1));
@@ -131,63 +95,64 @@ int main(int argc, char *argv[]) {
     /***************** BUILD COST FUNCTIONAL *********************************/
     /*************************************************************************/
     // Initialize quadratic objective function
-    std::vector<ROL::Ptr<QoI<RealT> > > qoi_vec(2,ROL::nullPtr);
+    std::vector<ROL::Ptr<QoI<RealT>>> qoi_vec(2,ROL::nullPtr);
     qoi_vec[0] = ROL::makePtr<QoI_State_Cost_Allen_Cahn<RealT>>(pde->getFE());
-    qoi_vec[1] = ROL::makePtr<QoI_Control_Cost_Allen_Cahn<RealT>>(pde->getFE(), pde->getBdryFE(), pde->getBdryCellLocIds());
+    qoi_vec[1] = ROL::makePtr<QoI_Control_Cost_Allen_Cahn<RealT>>(pde->getFE(),
+                                                                  pde->getBdryFE(),
+                                                                  pde->getBdryCellLocIds());
     std::vector<RealT> weights(2);
     weights[0] = static_cast<RealT>(1);
     weights[1] = parlist->sublist("Problem").get("Control Penalty Parameter", 1e-4);
     // Build full-space objective
-    ROL::Ptr<PDE_Objective<RealT> > obj
-      = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,weights,assembler);
+    ROL::Ptr<PDE_Objective<RealT>>
+      obj = ROL::makePtr<PDE_Objective<RealT>>(qoi_vec,weights,assembler);
     // Build reduced-space objective
     bool storage = parlist->sublist("Problem").get("Use state storage",true);
-    ROL::Ptr<ROL::SimController<RealT> > stateStore
-      = ROL::makePtr<ROL::SimController<RealT>>();
-    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT> > robj
-      = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(
-                       obj,con,stateStore,up,zp,pp,storage);
+    ROL::Ptr<ROL::VectorController<RealT>>
+      stateStore = ROL::makePtr<ROL::VectorController<RealT>>();
+    ROL::Ptr<ROL::Reduced_Objective_SimOpt<RealT>>
+      robj = ROL::makePtr<ROL::Reduced_Objective_SimOpt<RealT>>(obj,con,
+                                                                stateStore,
+                                                                up,zp,pp,
+                                                                storage);
 
     /*************************************************************************/
     /***************** BUILD BOUND CONSTRAINT ********************************/
     /*************************************************************************/
     // Control bounds
-    ROL::Ptr<Tpetra::MultiVector<> > zlo_ptr = assembler->createControlVector();
-    ROL::Ptr<Tpetra::MultiVector<> > zhi_ptr = assembler->createControlVector();
+    ROL::Ptr<Tpetra::MultiVector<>> zlo_ptr = assembler->createControlVector();
+    ROL::Ptr<Tpetra::MultiVector<>> zhi_ptr = assembler->createControlVector();
     RealT lo = parlist->sublist("Problem").get("Lower Bound",0.0);
-    RealT hi = parlist->sublist("Problem").get("Upper Bound",0.0);
+    RealT hi = parlist->sublist("Problem").get("Upper Bound",1.0);
     zlo_ptr->putScalar(lo); zhi_ptr->putScalar(hi);
-    ROL::Ptr<ROL::Vector<RealT> > zlop, zhip;
+    ROL::Ptr<ROL::Vector<RealT>> zlop, zhip;
     zlop = ROL::makePtr<PDE_PrimalOptVector<RealT>>(zlo_ptr,pde,assembler);
     zhip = ROL::makePtr<PDE_PrimalOptVector<RealT>>(zhi_ptr,pde,assembler);
-    ROL::Ptr<ROL::BoundConstraint<RealT> > zbnd
-      = ROL::makePtr<ROL::Bounds<RealT>>(zlop,zhip);
+    ROL::Ptr<ROL::BoundConstraint<RealT>>
+      zbnd = ROL::makePtr<ROL::Bounds<RealT>>(zlop,zhip);
     bool deactivate = parlist->sublist("Problem").get("Deactivate Bound Constraints",false);
-    if (deactivate) {
-      zbnd->deactivate();
-    }
+    if (deactivate) zbnd->deactivate();
     // State bounds
-    ROL::Ptr<Tpetra::MultiVector<> > ulo_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> > uhi_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> ulo_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> uhi_ptr = assembler->createStateVector();
     ulo_ptr->putScalar(ROL::ROL_NINF<RealT>()); uhi_ptr->putScalar(ROL::ROL_INF<RealT>());
-    ROL::Ptr<ROL::Vector<RealT> > ulop
-      = ROL::makePtr<PDE_PrimalSimVector<RealT>>(ulo_ptr,pde,assembler);
-    ROL::Ptr<ROL::Vector<RealT> > uhip
-      = ROL::makePtr<PDE_PrimalSimVector<RealT>>(uhi_ptr,pde,assembler);
-    ROL::Ptr<ROL::BoundConstraint<RealT> > ubnd
-      = ROL::makePtr<ROL::Bounds<RealT>>(ulop,uhip);
+    ROL::Ptr<ROL::Vector<RealT>> ulop, uhip;
+    ulop = ROL::makePtr<PDE_PrimalSimVector<RealT>>(ulo_ptr,pde,assembler);
+    uhip = ROL::makePtr<PDE_PrimalSimVector<RealT>>(uhi_ptr,pde,assembler);
+    ROL::Ptr<ROL::BoundConstraint<RealT>>
+    ubnd = ROL::makePtr<ROL::Bounds<RealT>>(ulop,uhip);
     ubnd->deactivate();
 
     // SimOpt bounds
-    ROL::Ptr<ROL::BoundConstraint<RealT> > bnd
-      = ROL::makePtr<ROL::BoundConstraint_SimOpt<RealT>>(ubnd,zbnd);
+    ROL::Ptr<ROL::BoundConstraint<RealT>>
+      bnd = ROL::makePtr<ROL::BoundConstraint_SimOpt<RealT>>(ubnd,zbnd);
 
     // Create ROL SimOpt vectors
-    ROL::Ptr<Tpetra::MultiVector<> > du_ptr = assembler->createStateVector();
-    ROL::Ptr<Tpetra::MultiVector<> > dz_ptr = assembler->createControlVector();
+    ROL::Ptr<Tpetra::MultiVector<>> du_ptr = assembler->createStateVector();
+    ROL::Ptr<Tpetra::MultiVector<>> dz_ptr = assembler->createControlVector();
     du_ptr->randomize(); //du_ptr->putScalar(static_cast<RealT>(0));
     dz_ptr->randomize(); //dz_ptr->putScalar(static_cast<RealT>(1));
-    ROL::Ptr<ROL::Vector<RealT> > dup, dzp;
+    ROL::Ptr<ROL::Vector<RealT>> dup, dzp;
     dup = ROL::makePtr<PDE_PrimalSimVector<RealT>>(du_ptr,pde,assembler,*parlist);
     dzp = ROL::makePtr<PDE_PrimalOptVector<RealT>>(dz_ptr,pde,assembler,*parlist);
 
@@ -223,17 +188,19 @@ int main(int argc, char *argv[]) {
     }
 
     bool useFullSpace = parlist->sublist("Problem").get("Full space",false);
-    ROL::Ptr<ROL::Algorithm<RealT> > algo;
-    std::cout << "USE FULL SPACE: " << useFullSpace << std::endl;
+    ROL::Ptr<ROL::Problem<RealT>> optProb;
     if ( useFullSpace ) {
-      ROL::OptimizationProblem<RealT> optProb(obj, makePtrFromRef(x), bnd, con, pp);
-      ROL::OptimizationSolver<RealT> optSolver(optProb, *parlist);
-      optSolver.solve(*outStream);
+      optProb = ROL::makePtr<ROL::Problem<RealT>>(obj, makePtrFromRef(x));
+      optProb->addBoundConstraint(bnd);
+      optProb->addConstraint("PDE", con, pp);
     }
     else {
-      ROL::Algorithm<RealT> algo("Trust Region",*parlist,false);
-      algo.run(*zp,*robj,*zbnd,true,*outStream);
+      optProb = ROL::makePtr<ROL::Problem<RealT>>(robj, zp);
+      optProb->addBoundConstraint(zbnd);
     }
+    optProb->finalize(false,true,*outStream);
+    ROL::Solver<RealT> optSolver(optProb, *parlist);
+    optSolver.solve(*outStream);
 
     // Output.
     RealT tol(1.e-8);
@@ -247,7 +214,7 @@ int main(int argc, char *argv[]) {
     *outStream << "Residual Norm: " << res[0] << std::endl;
     errorFlag += (res[0] > 1.e-6 ? 1 : 0);
   }
-  catch (std::logic_error err) {
+  catch (std::logic_error& err) {
     *outStream << err.what() << "\n";
     errorFlag = -1000;
   }; // end try

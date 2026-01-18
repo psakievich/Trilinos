@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 /*! \file  filter.hpp
@@ -48,7 +14,7 @@
 #ifndef ROL_DENSITY_FILTER_H
 #define ROL_DENSITY_FILTER_H
 
-#include "Teuchos_GlobalMPISession.hpp"
+#include "ROL_GlobalMPISession.hpp"
 #include "Teuchos_TimeMonitor.hpp"
 
 #include "Tpetra_MultiVector.hpp"
@@ -73,6 +39,8 @@ template<class Real>
 class DensityFilter {
 
 private:
+  using GO = typename Tpetra::Map<>::global_ordinal_type;
+
   ROL::Ptr<MeshManager<Real> > meshMgr_;
   ROL::Ptr<DofManager<Real> >  dofMgr_;
   std::vector<ROL::Ptr<Intrepid::Basis<Real, Intrepid::FieldContainer<Real> > > > basisPtrs_;
@@ -93,7 +61,7 @@ private:
   ROL::Ptr<Tpetra::CrsMatrix<> >    matB_trans_;
   ROL::Ptr<Tpetra::MultiVector<> >  vecCellVolumes_;
 
-  Teuchos::Array<int> myCellIds_;
+  Teuchos::Array<GO> myCellIds_;
   Teuchos::Array<Real> myCellVolumes_;
 
   ROL::Ptr<Amesos2::Solver< Tpetra::CrsMatrix<>, Tpetra::MultiVector<> > > solverA_;
@@ -103,9 +71,9 @@ private:
   int numNodesPerCell_;
   int numCubPoints_;
 
-  int totalNumCells_;
-  int totalNumDofs_;
-  int numCells_;
+  GO totalNumCells_;
+  GO totalNumDofs_;
+  GO numCells_;
 
   ROL::Ptr<Intrepid::FieldContainer<Real> > cubPoints_;
   ROL::Ptr<Intrepid::FieldContainer<Real> > cubWeights_;
@@ -195,9 +163,9 @@ public:
 
     // Partition the cells in the mesh.  We use a basic quasi-equinumerous partitioning,
     // where the remainder, if any, is assigned to the last processor.
-    Teuchos::Array<int> myGlobIds_;
-    Teuchos::Array<int> cellOffsets_(numProcs_, 0);
-    int cellsPerProc = totalNumCells_ / numProcs_;
+    Teuchos::Array<GO> myGlobIds_;
+    Teuchos::Array<GO> cellOffsets_(numProcs_, 0);
+    GO cellsPerProc = totalNumCells_ / numProcs_;
     numCells_ = cellsPerProc;
     switch(cellSplit) {
       case 0:
@@ -225,10 +193,10 @@ public:
         }
         break;
     }
-    Intrepid::FieldContainer<int> &cellDofs = *(dofMgr_->getCellDofs());
+    Intrepid::FieldContainer<GO> &cellDofs = *(dofMgr_->getCellDofs());
     int numLocalDofs = cellDofs.dimension(1);
     *outStream << "Cell offsets across processors: " << cellOffsets_ << std::endl;
-    for (int i=0; i<numCells_; ++i) {
+    for (GO i=0; i<numCells_; ++i) {
       myCellIds_.push_back(cellOffsets_[myRank_]+i);
       for (int j=0; j<numLocalDofs; ++j) {
         myGlobIds_.push_back( cellDofs(cellOffsets_[myRank_]+i,j) );
@@ -240,13 +208,13 @@ public:
     // Build maps.
     myOverlapMap_ = ROL::makePtr<Tpetra::Map<>>(Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid(),
                                                    myGlobIds_, 0, comm);
-    //std::cout << std::endl << myOverlapMap_->getNodeElementList();
+    //std::cout << std::endl << myOverlapMap_->getLocalElementList();
     /** One can also use the non-member function:
           myOverlapMap_ = Tpetra::createNonContigMap<int,int>(myGlobIds_, comm);
         to build the overlap map.
     **/
-    myUniqueMap_ = Tpetra::createOneToOne<int,int>(myOverlapMap_);
-    //std::cout << std::endl << myUniqueMap_->getNodeElementList() << std::endl;
+    myUniqueMap_ = Tpetra::createOneToOne(myOverlapMap_);
+    //std::cout << std::endl << myUniqueMap_->getLocalElementList() << std::endl;
 
     myBColumnMap_ = ROL::makePtr<Tpetra::Map<>>(Teuchos::OrdinalTraits<Tpetra::global_size_t>::invalid(),
                                  myCellIds_, 0, comm);
@@ -296,8 +264,8 @@ public:
 
     // Geometric definition of the cells in the mesh, based on the cell-to-node map and the domain partition.
     Intrepid::FieldContainer<Real> &nodes = *meshMgr_->getNodes();
-    Intrepid::FieldContainer<int>  &ctn   = *meshMgr_->getCellToNodeMap();
-    for (int i=0; i<numCells_; ++i) {
+    Intrepid::FieldContainer<GO>  &ctn   = *meshMgr_->getCellToNodeMap();
+    for (GO i=0; i<numCells_; ++i) {
       for (int j=0; j<numNodesPerCell_; ++j) {
         for (int k=0; k<spaceDim_; ++k) {
           (*cellNodes_)(i, j, k) = nodes(ctn(myCellIds_[i],j), k);
@@ -379,7 +347,7 @@ public:
 
     // Assemble graphs.
     matAGraph_ = ROL::makePtr<Tpetra::CrsGraph<>>(myUniqueMap_, 0);
-    Teuchos::ArrayRCP<const int> cellDofsArrayRCP = cellDofs.getData();
+    Teuchos::ArrayRCP<const GO> cellDofsArrayRCP = cellDofs.getData();
     for (int i=0; i<numCells_; ++i) {
       for (int j=0; j<numLocalDofs; ++j) {
         matAGraph_->insertGlobalIndices(cellDofs(myCellIds_[i],j), cellDofsArrayRCP(myCellIds_[i]*numLocalDofs, numLocalDofs));
@@ -387,7 +355,7 @@ public:
     }
     matAGraph_->fillComplete();
     matBGraph_ = ROL::makePtr<Tpetra::CrsGraph<>>(myUniqueMap_, myBColumnMap_, 0);
-    Teuchos::ArrayRCP<const int> cellIdsArrayRCP = Teuchos::arcpFromArray(myCellIds_);
+    Teuchos::ArrayRCP<const GO> cellIdsArrayRCP = Teuchos::arcpFromArray(myCellIds_);
     for (int i=0; i<numCells_; ++i) {
       for (int j=0; j<numLocalDofs; ++j) {
         matBGraph_->insertGlobalIndices(cellDofs(myCellIds_[i],j), cellIdsArrayRCP(i, 1));
@@ -438,7 +406,7 @@ public:
     // Construct solver using Amesos2 factory.
     try{
       solverA_ = Amesos2::create< Tpetra::CrsMatrix<>,Tpetra::MultiVector<> >("KLU2", matA_);
-    } catch (std::invalid_argument e) {
+    } catch (std::invalid_argument& e) {
       std::cout << e.what() << std::endl;
     }
     solverA_->numericFactorization();

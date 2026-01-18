@@ -1,44 +1,10 @@
 // @HEADER
-// ************************************************************************
-//
+// *****************************************************************************
 //               Rapid Optimization Library (ROL) Package
-//                 Copyright (2014) Sandia Corporation
 //
-// Under terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-// license for use of this work by or on behalf of the U.S. Government.
-//
-// Redistribution and use in source and binary forms, with or without
-// modification, are permitted provided that the following conditions are
-// met:
-//
-// 1. Redistributions of source code must retain the above copyright
-// notice, this list of conditions and the following disclaimer.
-//
-// 2. Redistributions in binary form must reproduce the above copyright
-// notice, this list of conditions and the following disclaimer in the
-// documentation and/or other materials provided with the distribution.
-//
-// 3. Neither the name of the Corporation nor the names of the
-// contributors may be used to endorse or promote products derived from
-// this software without specific prior written permission.
-//
-// THIS SOFTWARE IS PROVIDED BY SANDIA CORPORATION "AS IS" AND ANY
-// EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
-// PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL SANDIA CORPORATION OR THE
-// CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
-// EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-// PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
-// LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
-// NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-// SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-//
-// Questions? Contact lead developers:
-//              Drew Kouri   (dpkouri@sandia.gov) and
-//              Denis Ridzal (dridzal@sandia.gov)
-//
-// ************************************************************************
+// Copyright 2014 NTESS and the ROL contributors.
+// SPDX-License-Identifier: BSD-3-Clause
+// *****************************************************************************
 // @HEADER
 
 #ifndef ROL_AUGMENTEDLAGRANGIANSTEP_H
@@ -47,9 +13,19 @@
 #include "ROL_AugmentedLagrangian.hpp"
 #include "ROL_Types.hpp"
 #include "ROL_Algorithm.hpp"
+#include "ROL_ParameterList.hpp"
+
+// Step (bound constrained or unconstrained) includes
 #include "ROL_LineSearchStep.hpp"
 #include "ROL_TrustRegionStep.hpp"
-#include "ROL_ParameterList.hpp"
+#include "ROL_PrimalDualActiveSetStep.hpp"
+#include "ROL_MoreauYosidaPenaltyStep.hpp"
+#include "ROL_BundleStep.hpp"
+#include "ROL_InteriorPointStep.hpp"
+
+// StatusTest includes
+#include "ROL_StatusTest.hpp"
+#include "ROL_BundleStatusTest.hpp"
 
 /** @ingroup step_group
     \class ROL::AugmentedLagrangianStep
@@ -140,12 +116,20 @@
 
 namespace ROL {
 
+template<class Real>
+class MoreauYosidaPenaltyStep;
+
+template<class Real>
+class InteriorPointStep;
+
 template <class Real>
 class AugmentedLagrangianStep : public Step<Real> {
 private:
-  ROL::Ptr<Algorithm<Real> > algo_;
-  ROL::Ptr<Vector<Real> > x_; 
-  ROL::Ptr<BoundConstraint<Real> > bnd_;
+  ROL::Ptr<StatusTest<Real>>      status_;
+  ROL::Ptr<Step<Real>>            step_;
+  ROL::Ptr<Algorithm<Real>>       algo_;
+  ROL::Ptr<Vector<Real>>          x_; 
+  ROL::Ptr<BoundConstraint<Real>> bnd_;
 
   ROL::ParameterList parlist_;
   // Lagrange multiplier update
@@ -285,7 +269,6 @@ public:
     if ( bnd.isActivated() ) {
       bnd.project(x);
     }
-    bnd.update(x,true,algo_state.iter);
     // Update objective and constraint.
     augLag.update(x,true,algo_state.iter);
     if (useDefaultScaling_) {
@@ -323,10 +306,10 @@ public:
     algo_state.ngrad += augLag.getNumberGradientEvaluations();
     // Initialize intermediate stopping tolerances
     minPenaltyReciprocal_ = std::min(one/state->searchSize,minPenaltyLowerBound_);
-    optTolerance_  = std::max(TOL*outerOptTolerance_,
+    optTolerance_  = std::max<Real>(TOL*outerOptTolerance_,
                               optToleranceInitial_*std::pow(minPenaltyReciprocal_,optDecreaseExponent_));
-    optTolerance_  = std::min(optTolerance_,TOL*algo_state.gnorm);
-    feasTolerance_ = std::max(TOL*outerFeasTolerance_,
+    optTolerance_  = std::min<Real>(optTolerance_,TOL*algo_state.gnorm);
+    feasTolerance_ = std::max<Real>(TOL*outerFeasTolerance_,
                               feasToleranceInitial_*std::pow(minPenaltyReciprocal_,feasDecreaseExponent_));
     if (verbosity_ > 0) {
       std::cout << std::endl;
@@ -351,17 +334,56 @@ public:
                 Objective<Real> &obj, Constraint<Real> &con, 
                 BoundConstraint<Real> &bnd, AlgorithmState<Real> &algo_state ) {
     Real one(1);
-    AugmentedLagrangian<Real> &augLag
-      = dynamic_cast<AugmentedLagrangian<Real>&>(obj);
+    //AugmentedLagrangian<Real> &augLag
+    //  = dynamic_cast<AugmentedLagrangian<Real>&>(obj);
     parlist_.sublist("Status Test").set("Gradient Tolerance",optTolerance_);
     parlist_.sublist("Status Test").set("Step Tolerance",1.e-6*optTolerance_);
-    algo_ = ROL::makePtr<Algorithm<Real>>(subStep_,parlist_,false);
-    x_->set(x);
-    if ( bnd.isActivated() ) {
-      algo_->run(*x_,augLag,bnd,print_);
+    Ptr<Objective<Real>> penObj;
+    if (subStep_ == "Bundle") {
+      step_   = makePtr<BundleStep<Real>>(parlist_);
+      status_ = makePtr<BundleStatusTest<Real>>(parlist_);
+      penObj  = makePtrFromRef(obj);
+    }
+    else if (subStep_ == "Line Search") {
+      step_   = makePtr<LineSearchStep<Real>>(parlist_);
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      penObj  = makePtrFromRef(obj);
+    }
+    else if (subStep_ == "Moreau-Yosida Penalty") {
+      step_   = makePtr<MoreauYosidaPenaltyStep<Real>>(parlist_);
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      Ptr<Objective<Real>> raw_obj = makePtrFromRef(obj);
+      penObj = ROL::makePtr<MoreauYosidaPenalty<Real>>(raw_obj,bnd_,x,parlist_);
+    }
+    else if (subStep_ == "Primal Dual Active Set") {
+      step_   = makePtr<PrimalDualActiveSetStep<Real>>(parlist_);
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      penObj  = makePtrFromRef(obj);
+    }
+    else if (subStep_ == "Trust Region") {
+      step_   = makePtr<TrustRegionStep<Real>>(parlist_);
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      penObj  = makePtrFromRef(obj);
+    }
+    else if (subStep_ == "Interior Point") {
+      step_   = makePtr<InteriorPointStep<Real>>(parlist_);
+      status_ = makePtr<StatusTest<Real>>(parlist_);
+      Ptr<Objective<Real>> raw_obj = makePtrFromRef(obj);
+      penObj = ROL::makePtr<InteriorPoint::PenalizedObjective<Real>>(raw_obj,bnd_,x,parlist_);
     }
     else {
-      algo_->run(*x_,augLag,print_);
+      throw Exception::NotImplemented(">>> ROL::AugmentedLagrangianStep: Incompatible substep type!"); 
+    }
+    algo_ = makePtr<Algorithm<Real>>(step_,status_,false);
+    //algo_ = ROL::makePtr<Algorithm<Real>>(subStep_,parlist_,false);
+    x_->set(x);
+    if ( bnd.isActivated() ) {
+      //algo_->run(*x_,augLag,bnd,print_);
+      algo_->run(*x_,*penObj,bnd,print_);
+    }
+    else {
+      //algo_->run(*x_,augLag,print_);
+      algo_->run(*x_,*penObj,print_);
     }
     s.set(*x_); s.axpy(-one,x);
     subproblemIter_ = (algo_->getState())->iter;
@@ -393,6 +415,7 @@ public:
     algo_state.snorm = s.norm();
     algo_state.iter++;
     // Update objective function value
+    obj.update(x);
     algo_state.value = augLag.getObjectiveValue(x);
     // Update constraint value
     augLag.getConstraintVec(*(state->constraintVec),x);
@@ -406,13 +429,14 @@ public:
     algo_state.ncval += augLag.getNumberConstraintEvaluations();
     // Update objective function and constraints
     augLag.update(x,true,algo_state.iter);
-    bnd.update(x,true,algo_state.iter);
     // Update multipliers
     minPenaltyReciprocal_ = std::min(one/state->searchSize,minPenaltyLowerBound_);
     if ( cscale_*algo_state.cnorm < feasTolerance_ ) {
       l.axpy(state->searchSize*cscale_,(state->constraintVec)->dual());
-      optTolerance_  = std::max(oem2*outerOptTolerance_,
-                       optTolerance_*std::pow(minPenaltyReciprocal_,optIncreaseExponent_));
+      if ( algo_->getState()->statusFlag == EXITSTATUS_CONVERGED ) {
+        optTolerance_  = std::max(oem2*outerOptTolerance_,
+                         optTolerance_*std::pow(minPenaltyReciprocal_,optIncreaseExponent_));
+      }
       feasTolerance_ = std::max(oem2*outerFeasTolerance_,
                        feasTolerance_*std::pow(minPenaltyReciprocal_,feasIncreaseExponent_));
       // Update Algorithm State

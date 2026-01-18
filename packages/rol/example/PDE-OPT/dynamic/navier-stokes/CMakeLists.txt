@@ -1,26 +1,43 @@
-
 IF(${PROJECT_NAME}_ENABLE_Intrepid AND
    ${PROJECT_NAME}_ENABLE_Ifpack2  AND
    ${PROJECT_NAME}_ENABLE_MueLu    AND
    ${PROJECT_NAME}_ENABLE_Amesos2  AND
    ${PROJECT_NAME}_ENABLE_Tpetra )
 
-  INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/teuchos/src/sol)
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/teuchos/src/sol)
 
   # Need ROL_TpetraMultiVector.hpp
-  INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/tpetra/src/vector)
-  INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/tpetra/src/sol)
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/tpetra/src/vector)
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/tpetra/src/sol)
 
-  TRIBITS_ADD_EXECUTABLE(
+  # Need for parallel-in-time.
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/mpi/src/function)
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/mpi/src/vector)
+  TRIBITS_INCLUDE_DIRECTORIES(${${PACKAGE_NAME}_SOURCE_DIR}/adapters/tpetra/src/mpi)
+
+  ROL_ADD_EXECUTABLE(
     example_01
     SOURCES example_01.cpp
     ADD_DIR_TO_NAME
   )
+  ROL_ADD_EXECUTABLE(
+    example_02
+    SOURCES example_02.cpp
+    ADD_DIR_TO_NAME
+  )
+  IF(TPL_ENABLE_MPI)
+    ROL_ADD_EXECUTABLE(
+      AugmentedSystem
+      SOURCES AugmentedSystem.cpp ROL_PinTVectorCommunication_StdTpetraComposite.hpp
+      ADD_DIR_TO_NAME
+    )
+  ENDIF()
 
-  TRIBITS_COPY_FILES_TO_BINARY_DIR(
+  ROL_COPY_FILES_TO_BINARY_DIR(
     DynamicNavierStokesDataCopy
     SOURCE_FILES
       input.xml
+      input_02.xml
       plotControl.m
       plotFlow.m
       plotInitialFlow.m
