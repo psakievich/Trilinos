@@ -1,0 +1,282 @@
+include(CMakeParseArguments)
+include(CTest)
+
+cmake_policy(SET CMP0054 NEW)
+
+message(STATUS "The project name is: ${PROJECT_NAME}")
+
+function(pad_string INPUT OUTPUT_VARIABLE LENGTH)
+  string(LENGTH "${INPUT}" INPUT_LENGTH)
+  math(EXPR EXTRA_SPACES "${LENGTH} - ${INPUT_LENGTH} - 1")
+  set(TEMP "${INPUT}")
+  foreach(STEP RANGE ${EXTRA_SPACES})
+    string(APPEND TEMP " ")
+  endforeach()
+  set(${OUTPUT_VARIABLE} "${TEMP}" PARENT_SCOPE)
+endfunction()
+
+function(assert_defined VARS)
+  foreach(VAR ${VARS})
+    if(NOT DEFINED ${VAR})
+      message(SEND_ERROR "Error, the variable ${VAR} is not defined!")
+    endif()
+  endforeach()
+endfunction()
+
+function(kokkoskernels_add_option SUFFIX DEFAULT TYPE DOCSTRING)
+  cmake_parse_arguments(
+    OPT "" ""
+    "VALID_ENTRIES" #if this is a list variable, the valid values in the list
+    ${ARGN})
+
+  set(CAMEL_NAME KokkosKernels_${SUFFIX})
+  string(TOUPPER ${CAMEL_NAME} UC_NAME)
+
+  # Make sure this appears in the cache with the appropriate DOCSTRING
+  set(${CAMEL_NAME} ${DEFAULT} CACHE ${TYPE} ${DOCSTRING})
+
+  #I don't love doing it this way because it's N^2 in number options, but cest la vie
+  foreach(opt ${KOKKOSKERNELS_GIVEN_VARIABLES})
+    string(TOUPPER ${opt} OPT_UC)
+    if("${OPT_UC}" STREQUAL "${UC_NAME}")
+      if(NOT "${opt}" STREQUAL "${CAMEL_NAME}")
+        message(FATAL_ERROR
+          "Matching option found for ${CAMEL_NAME} with the wrong case ${opt}. Please delete your CMakeCache.txt and change option to -D${CAMEL_NAME}=${${opt}}. This is now enforced to avoid hard-to-debug CMake cache inconsistencies.")
+      endif()
+    endif()
+  endforeach()
+
+  #okay, great, we passed the validation test - use the default
+  if(DEFINED ${CAMEL_NAME})
+    if(OPT_VALID_ENTRIES)
+      string(TOUPPER "${OPT_VALID_ENTRIES}" OPT_VALID_ENTRIES_UC)
+      foreach(entry ${${CAMEL_NAME}})
+        string(TOUPPER ${entry} ENTRY_UC)
+        if(NOT ${ENTRY_UC} IN_LIST OPT_VALID_ENTRIES_UC)
+          message(FATAL_ERROR
+            "Given entry ${entry} in list for option ${SUFFIX}. "
+            "Valid case-insensitive values are any of ${OPT_VALID_ENTRIES}")
+        endif()
+      endforeach()
+      string(TOUPPER "${${CAMEL_NAME}}" GIVEN_ENTRIES_UC)
+      set(${UC_NAME} ${GIVEN_ENTRIES_UC} PARENT_SCOPE)
+    else()
+      set(${UC_NAME} ${${CAMEL_NAME}} PARENT_SCOPE)
+    endif()
+  else()
+    set(${UC_NAME} ${DEFAULT} PARENT_SCOPE)
+  endif()
+
+endfunction()
+
+macro(kokkoskernels_add_option_and_define USER_OPTION_NAME MACRO_DEFINE_NAME DOCSTRING DEFAULT_VALUE)
+  kokkoskernels_add_option(${USER_OPTION_NAME} ${DEFAULT_VALUE} BOOL ${DOCSTRING})
+  if(${KOKKOSKERNELS_${USER_OPTION_NAME}})
+    set(${MACRO_DEFINE_NAME} ON)
+  endif()
+endmacro()
+
+macro(kokkoskernels_add_tpl_option NAME DEFAULT_VALUE DOCSTRING)
+  kokkoskernels_add_option(ENABLE_TPL_${NAME} ${DEFAULT_VALUE} BOOL ${DOCSTRING})
+  if(DEFINED TPL_ENABLE_${NAME})
+    if(TPL_ENABLE_${NAME} AND NOT KOKKOSKERNELS_ENABLE_TPL_${NAME})
+      message("Overriding KOKKOSKERNELS_ENABLE_TPL_${NAME}=OFF with TPL_ENABLE_${NAME}=ON")
+      set(KOKKOSKERNELS_ENABLE_TPL_${NAME} ON)
+    elseif(NOT TPL_ENABLE_${NAME} AND KOKKOSKERNELS_ENABLE_TPL_${NAME})
+      message("Overriding KOKKOSKERNELS_ENABLE_TPL_${NAME}=ON with TPL_ENABLE_${NAME}=OFF")
+      set(KOKKOSKERNELS_ENABLE_TPL_${NAME} OFF)
+    endif()
+  endif()
+endmacro()
+
+if(NOT KOKKOSKERNELS_HAS_TRILINOS)
+  macro(append_glob VAR)
+    file(GLOB LOCAL_TMP_VAR ${ARGN})
+    list(APPEND ${VAR} ${LOCAL_TMP_VAR})
+  endmacro()
+
+  macro(global_set VARNAME)
+    set(${VARNAME} ${ARGN} CACHE INTERNAL "")
+  endmacro()
+
+  function(global_append VARNAME)
+    #We make this a function since we are setting variables
+    #and want to use scope to avoid overwriting local variables
+    set(TEMP ${${VARNAME}})
+    list(APPEND TEMP ${ARGN})
+    global_set(${VARNAME} ${TEMP})
+  endfunction()
+
+  macro(prepend_global_set VARNAME)
+    assert_defined(${VARNAME})
+    global_set(${VARNAME} ${ARGN} ${${VARNAME}})
+  endmacro()
+
+  macro(prepend_target_set VARNAME TARGET_NAME TYPE)
+    if(TYPE STREQUAL "REQUIRED")
+      set(REQUIRED TRUE)
+    else()
+      set(REQUIRED FALSE)
+    endif()
+    if(TARGET ${TARGET_NAME})
+      prepend_global_set(${VARNAME} ${TARGET_NAME})
+    else()
+      if(REQUIRED)
+        message(FATAL_ERROR "Missing dependency ${TARGET_NAME}")
+      endif()
+    endif()
+  endmacro()
+endif(NOT KOKKOSKERNELS_HAS_TRILINOS)
+
+function(kokkoskernels_configure_file PACKAGE_NAME_CONFIG_FILE)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_configure_file(${PACKAGE_NAME_CONFIG_FILE})
+  else()
+    # Configure the file
+    configure_file(${PACKAGE_SOURCE_DIR}/cmake/${PACKAGE_NAME_CONFIG_FILE}.in
+                   ${CMAKE_CURRENT_BINARY_DIR}/${PACKAGE_NAME_CONFIG_FILE})
+  endif()
+endfunction()
+
+macro(kokkoskernels_add_test_directories)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_add_test_directories(${ARGN})
+  else()
+    if(KOKKOSKERNELS_ENABLE_TESTS)
+      foreach(TEST_DIR ${ARGN})
+        add_subdirectory(${TEST_DIR})
+      endforeach()
+    endif()
+  endif()
+endmacro()
+
+macro(kokkoskernels_add_example_directories)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_add_example_directories(${ARGN})
+  else()
+    if(KOKKOSKERNELS_ENABLE_EXAMPLES)
+      foreach(EXAMPLE_DIR ${ARGN})
+        add_subdirectory(${EXAMPLE_DIR})
+      endforeach()
+    endif()
+  endif()
+endmacro()
+
+macro(add_interface_library LIB_NAME)
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/dummy.cpp "")
+  add_library(${LIB_NAME} STATIC ${CMAKE_CURRENT_BINARY_DIR}/dummy.cpp)
+  set_target_properties(${LIB_NAME} PROPERTIES INTERFACE TRUE)
+endmacro()
+
+if(NOT TARGET check)
+  add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND} -VV -C ${CMAKE_CFG_INTDIR})
+endif()
+
+function(kokkoskernels_add_test)
+  cmake_parse_arguments(PARSE "" "" "COMPONENTS" ${ARGN})
+  kokkoskernels_is_enabled(COMPONENTS ${PARSE_COMPONENTS} OUTPUT_VARIABLE IS_ENABLED)
+
+  if(IS_ENABLED)
+    if(KOKKOSKERNELS_HAS_TRILINOS)
+      cmake_parse_arguments(TEST "" "EXE;NAME" "" ${PARSE_UNPARSED_ARGUMENTS})
+      if(TEST_EXE)
+        set(EXE_ROOT ${TEST_EXE})
+      else()
+        set(EXE_ROOT ${TEST_NAME})
+      endif()
+
+      tribits_add_test(${EXE_ROOT}
+        NAME ${TEST_NAME}
+        ${ARGN}
+        COMM serial mpi
+        NUM_MPI_PROCS 1
+        ${TEST_UNPARSED_ARGUMENTS})
+    else()
+      cmake_parse_arguments(
+        TEST "WILL_FAIL"
+        "FAIL_REGULAR_EXPRESSION;PASS_REGULAR_EXPRESSION;EXE;NAME" "CATEGORIES"
+        ${PARSE_UNPARSED_ARGUMENTS})
+      if(TEST_EXE)
+        set(EXE ${TEST_EXE})
+      else()
+        set(EXE ${TEST_NAME})
+      endif()
+      if(WIN32)
+        add_test(NAME ${TEST_NAME} WORKING_DIRECTORY ${LIBRARY_OUTPUT_PATH} COMMAND ${EXE}${CMAKE_EXECUTABLE_SUFFIX})
+      else()
+        add_test(NAME ${TEST_NAME} COMMAND ${EXE})
+      endif()
+      if(TEST_WILL_FAIL)
+        set_tests_properties(${TEST_NAME} PROPERTIES WILL_FAIL ${TEST_WILL_FAIL})
+      endif()
+      if(TEST_FAIL_REGULAR_EXPRESSION)
+        set_tests_properties(${TEST_NAME} PROPERTIES FAIL_REGULAR_EXPRESSION ${TEST_FAIL_REGULAR_EXPRESSION})
+      endif()
+      if(TEST_PASS_REGULAR_EXPRESSION)
+        set_tests_properties(${TEST_NAME} PROPERTIES PASS_REGULAR_EXPRESSION ${TEST_PASS_REGULAR_EXPRESSION})
+      endif()
+      verify_empty(KOKKOSKERNELS_ADD_TEST ${TEST_UNPARSED_ARGUMENTS})
+    endif()
+  else()
+    message(STATUS "Skipping test ${TEST_NAME} because not all necessary components enabled")
+  endif()
+endfunction()
+
+function(kokkoskernels_add_advanced_test)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_add_advanced_test(${ARGN})
+  else()
+    # TODO WRITE THIS
+  endif()
+endfunction()
+
+function(kokkoskernels_lib_type LIB RET)
+  get_target_property(PROP ${LIB} TYPE)
+  if(${PROP} STREQUAL "INTERFACE_LIBRARY")
+    set(${RET} "INTERFACE" PARENT_SCOPE)
+  else()
+    set(${RET} "PUBLIC" PARENT_SCOPE)
+  endif()
+endfunction()
+
+function(kokkoskernels_add_test_library NAME)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_add_library(${NAME} ${ARGN} TESTONLY ADDED_LIB_TARGET_NAME_OUT ${NAME})
+  else()
+    set(oneValueArgs)
+    set(multiValueArgs HEADERS SOURCES)
+
+    cmake_parse_arguments(PARSE "STATIC;SHARED" "" "HEADERS;SOURCES" ${ARGN})
+
+    if(PARSE_HEADERS)
+      list(REMOVE_DUPLICATES PARSE_HEADERS)
+    endif()
+    if(PARSE_SOURCES)
+      list(REMOVE_DUPLICATES PARSE_SOURCES)
+    endif()
+    add_library(${NAME} ${PARSE_SOURCES})
+  endif()
+endfunction()
+
+function(kokkoskernels_include_directories)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_include_directories(${ARGN})
+  else()
+    cmake_parse_arguments(INC "REQUIRED_DURING_INSTALLATION_TESTING" "" "" ${ARGN})
+    include_directories(${INC_UNPARSED_ARGUMENTS})
+  endif()
+endfunction()
+
+macro(printall)
+  get_cmake_property(_variableNames VARIABLES)
+  list(SORT _variableNames)
+  foreach(_variableName ${_variableNames})
+    message(STATUS "${_variableName}=${${_variableName}}")
+  endforeach()
+endmacro()
+
+macro(kokkoskernels_add_debug_option)
+  if(KOKKOSKERNELS_HAS_TRILINOS)
+    tribits_add_debug_option()
+  endif()
+endmacro()
