@@ -1,64 +1,309 @@
+#Leave these here for now - I don't need transitive deps anyway
+kokkos_include_directories(${CMAKE_CURRENT_BINARY_DIR})
+kokkos_include_directories(REQUIRED_DURING_INSTALLATION_TESTING ${CMAKE_CURRENT_SOURCE_DIR})
+kokkos_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../src)
+kokkos_include_directories(${KOKKOS_SOURCE_DIR}/core/unit_test/category_files)
 
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
-INCLUDE_DIRECTORIES(REQUIRED_DURING_INSTALLATION_TESTING ${CMAKE_CURRENT_SOURCE_DIR})
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../src )
+set(ALGORITHM UnitTestMain.cpp)
 
-IF(NOT KOKKOS_HAS_TRILINOS)
-  IF(KOKKOS_SEPARATE_LIBS)
-    set(TEST_LINK_TARGETS kokkoscore)
-  ELSE()
-    set(TEST_LINK_TARGETS kokkos)
-  ENDIF()
-ENDIF()
+foreach(Tag Threads;Serial;OpenMP;Cuda;HPX;HIP;SYCL)
+  string(TOUPPER ${Tag} DEVICE)
+  string(TOLOWER ${Tag} dir)
 
-SET(GTEST_SOURCE_DIR ${${PARENT_PACKAGE_NAME}_SOURCE_DIR}/tpls/gtest)
-INCLUDE_DIRECTORIES(${GTEST_SOURCE_DIR})
+  if(Kokkos_ENABLE_${DEVICE})
+    set(dir ${CMAKE_CURRENT_BINARY_DIR}/${dir})
+    file(MAKE_DIRECTORY ${dir})
 
-# mfh 03 Nov 2017: The gtest library used here must have a different
-# name than that of the gtest library built in KokkosCore.  We can't
-# just refer to the library in KokkosCore's tests, because it's
-# possible to build only (e.g.,) KokkosAlgorithms tests, without
-# building KokkosCore tests.
+    # ------------------------------------------
+    # Sort
+    # ------------------------------------------
+    # Each of these inputs is an .hpp file.
+    # Generate a .cpp file for each one that runs it on the current backend (Tag),
+    # and add this .cpp file to the sources for UnitTest_RandomAndSort.
+    set(ALGO_SORT_SOURCES)
+    foreach(SOURCE_Input TestSort TestSortByKey TestSortCustomComp TestBinSortA TestBinSortB TestNestedSort)
+      set(file ${dir}/${SOURCE_Input}.cpp)
+      # Write to a temporary intermediate file and call configure_file to avoid
+      # updating timestamps triggering unnecessary rebuilds on subsequent cmake runs.
+      file(WRITE ${dir}/dummy.cpp "#include <Test${Tag}_Category.hpp>\n" "#include <${SOURCE_Input}.hpp>\n")
+      configure_file(${dir}/dummy.cpp ${file})
+      list(APPEND ALGO_SORT_SOURCES ${file})
+    endforeach()
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DGTEST_HAS_PTHREAD=0")
+    # ------------------------------------------
+    # Random
+    # ------------------------------------------
+    # do as above
+    set(ALGO_RANDOM_SOURCES)
+    foreach(SOURCE_Input TestRandom)
+      set(file ${dir}/${SOURCE_Input}.cpp)
+      file(WRITE ${dir}/dummy.cpp "#include <Test${Tag}_Category.hpp>\n" "#include <${SOURCE_Input}.hpp>\n")
+      configure_file(${dir}/dummy.cpp ${file})
+      list(APPEND ALGO_RANDOM_SOURCES ${file})
+    endforeach()
+  endif()
+endforeach()
 
-TRIBITS_ADD_LIBRARY(
-  kokkosalgorithms_gtest
-  HEADERS ${GTEST_SOURCE_DIR}/gtest/gtest.h
-  SOURCES ${GTEST_SOURCE_DIR}/gtest/gtest-all.cc
-  TESTONLY
+# ------------------------------------------
+# std set A
+# ------------------------------------------
+set(STDALGO_SOURCES_A)
+foreach(Name StdReducers StdAlgorithmsConstraints RandomAccessIterator)
+  list(APPEND STDALGO_SOURCES_A Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std set B
+# ------------------------------------------
+set(STDALGO_SOURCES_B)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsMinMaxElementOps)
+  list(APPEND STDALGO_SOURCES_B Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std set C
+# ------------------------------------------
+set(STDALGO_SOURCES_C)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsLexicographicalCompare
+  StdAlgorithmsForEach
+  StdAlgorithmsFind
+  StdAlgorithmsFindFirstOf
+  StdAlgorithmsFindEnd
+  StdAlgorithmsCount
+  StdAlgorithmsEqual
+  StdAlgorithmsAllAnyNoneOf
+  StdAlgorithmsAdjacentFind
+  StdAlgorithmsSearch
+  StdAlgorithmsSearch_n
+  StdAlgorithmsMismatch
+  StdAlgorithmsMoveBackward
+)
+  list(APPEND STDALGO_SOURCES_C Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std set D
+# ------------------------------------------
+set(STDALGO_SOURCES_D)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsModOps
+  StdAlgorithmsModSeqOps
+  StdAlgorithmsReplace
+  StdAlgorithmsReplaceIf
+  StdAlgorithmsReplaceCopy
+  StdAlgorithmsReplaceCopyIf
+  StdAlgorithmsCopyIf
+  StdAlgorithmsUnique
+  StdAlgorithmsUniqueCopy
+  StdAlgorithmsRemove
+  StdAlgorithmsRemoveIf
+  StdAlgorithmsRemoveCopy
+  StdAlgorithmsRemoveCopyIf
+  StdAlgorithmsRotate
+  StdAlgorithmsRotateCopy
+  StdAlgorithmsReverse
+  StdAlgorithmsShiftLeft
+  StdAlgorithmsShiftRight
+)
+  list(APPEND STDALGO_SOURCES_D Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std set E
+# ------------------------------------------
+set(STDALGO_SOURCES_E)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsIsSorted
+  StdAlgorithmsIsSortedUntil
+  StdAlgorithmsPartitioningOps
+  StdAlgorithmsPartitionCopy
+  StdAlgorithmsNumerics
+  StdAlgorithmsAdjacentDifference
+  StdAlgorithmsExclusiveScan
+  StdAlgorithmsInclusiveScan
+  StdAlgorithmsTransformUnaryOp
+  StdAlgorithmsTransformExclusiveScan
+  StdAlgorithmsTransformInclusiveScan
+)
+  list(APPEND STDALGO_SOURCES_E Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team Q
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_Q)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamInclusiveScan StdAlgorithmsTeamTransformInclusiveScan)
+  list(APPEND STDALGO_TEAM_SOURCES_Q Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team P
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_P)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamExclusiveScan StdAlgorithmsTeamTransformExclusiveScan)
+  list(APPEND STDALGO_TEAM_SOURCES_P Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team M
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_M)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamTransformUnaryOp StdAlgorithmsTeamTransformBinaryOp
+             StdAlgorithmsTeamGenerate StdAlgorithmsTeamGenerate_n StdAlgorithmsTeamSwapRanges
+)
+  list(APPEND STDALGO_TEAM_SOURCES_M Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team L
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_L)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamIsSorted StdAlgorithmsTeamIsSortedUntil
+             StdAlgorithmsTeamIsPartitioned StdAlgorithmsTeamPartitionCopy StdAlgorithmsTeamPartitionPoint
+)
+  list(APPEND STDALGO_TEAM_SOURCES_L Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team I
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_I)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamUnique StdAlgorithmsTeamAdjacentDifference StdAlgorithmsTeamReduce
+             StdAlgorithmsTeamTransformReduce
+)
+  list(APPEND STDALGO_TEAM_SOURCES_I Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team H
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_H)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsTeamCopy
+  StdAlgorithmsTeamCopy_n
+  StdAlgorithmsTeamCopyBackward
+  StdAlgorithmsTeamCopyIf
+  StdAlgorithmsTeamUniqueCopy
+  StdAlgorithmsTeamRemove
+  StdAlgorithmsTeamRemoveIf
+  StdAlgorithmsTeamRemoveCopy
+  StdAlgorithmsTeamRemoveCopyIf
+)
+  list(APPEND STDALGO_TEAM_SOURCES_H Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team G
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_G)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamMove StdAlgorithmsTeamMoveBackward StdAlgorithmsTeamShiftLeft
+             StdAlgorithmsTeamShiftRight
+)
+  list(APPEND STDALGO_TEAM_SOURCES_G Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team F
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_F)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamReverse StdAlgorithmsTeamReverseCopy StdAlgorithmsTeamRotate
+             StdAlgorithmsTeamRotateCopy
+)
+  list(APPEND STDALGO_TEAM_SOURCES_F Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team E
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_E)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsTeamFill
+  StdAlgorithmsTeamFill_n
+  StdAlgorithmsTeamReplace
+  StdAlgorithmsTeamReplaceIf
+  StdAlgorithmsTeamReplaceCopy
+  StdAlgorithmsTeamReplaceCopyIf
+)
+  list(APPEND STDALGO_TEAM_SOURCES_E Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team D
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_D)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamMinElement StdAlgorithmsTeamMaxElement StdAlgorithmsTeamMinMaxElement)
+  list(APPEND STDALGO_TEAM_SOURCES_D Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team C
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_C)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsTeamFind
+  StdAlgorithmsTeamFindIf
+  StdAlgorithmsTeamFindIfNot
+  StdAlgorithmsTeamAllOf
+  StdAlgorithmsTeamAnyOf
+  StdAlgorithmsTeamNoneOf
+  StdAlgorithmsTeamSearchN
+)
+  list(APPEND STDALGO_TEAM_SOURCES_C Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team B
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_B)
+foreach(Name StdAlgorithmsCommon StdAlgorithmsTeamEqual StdAlgorithmsTeamSearch StdAlgorithmsTeamFindEnd
+             StdAlgorithmsTeamFindFirstOf
+)
+  list(APPEND STDALGO_TEAM_SOURCES_B Test${Name}.cpp)
+endforeach()
+
+# ------------------------------------------
+# std team A
+# ------------------------------------------
+set(STDALGO_TEAM_SOURCES_A)
+foreach(
+  Name
+  StdAlgorithmsCommon
+  StdAlgorithmsTeamAdjacentFind
+  StdAlgorithmsTeamCount
+  StdAlgorithmsTeamCountIf
+  StdAlgorithmsTeamForEach
+  StdAlgorithmsTeamForEachN
+  StdAlgorithmsTeamLexicographicalCompare
+  StdAlgorithmsTeamMismatch
+)
+  list(APPEND STDALGO_TEAM_SOURCES_A Test${Name}.cpp)
+endforeach()
+
+kokkos_add_executable_and_test(UnitTest_Sort SOURCES UnitTestMain.cpp TestStdAlgorithmsCommon.cpp ${ALGO_SORT_SOURCES})
+
+kokkos_add_executable_and_test(UnitTest_Random SOURCES UnitTestMain.cpp ${ALGO_RANDOM_SOURCES})
+
+foreach(ID A;B;C;D;E)
+  kokkos_add_executable_and_test(AlgorithmsUnitTest_StdSet_${ID} SOURCES UnitTestMain.cpp ${STDALGO_SOURCES_${ID}})
+endforeach()
+
+foreach(ID A;B;C;D;E;F;G;H;I;L;M;P;Q)
+  kokkos_add_executable_and_test(
+    AlgorithmsUnitTest_StdSet_Team_${ID} SOURCES UnitTestMain.cpp ${STDALGO_TEAM_SOURCES_${ID}}
   )
+endforeach()
 
-SET(SOURCES
-  UnitTestMain.cpp 
-  TestCuda.cpp
-  )
-
-SET(LIBRARIES kokkoscore)
-
-IF(Kokkos_ENABLE_OpenMP)
-  LIST( APPEND SOURCES
-    TestOpenMP.cpp
-  )
-ENDIF()
-
-IF(Kokkos_ENABLE_Serial)
-  LIST( APPEND SOURCES
-    TestSerial.cpp
-  )
-ENDIF()
-
-IF(Kokkos_ENABLE_Pthread)
-  LIST( APPEND SOURCES
-    TestThreads.cpp
-  )
-ENDIF()
-
-TRIBITS_ADD_EXECUTABLE_AND_TEST(
-  UnitTest
-  SOURCES ${SOURCES}
-  COMM serial mpi
-  NUM_MPI_PROCS 1
-  FAIL_REGULAR_EXPRESSION "  FAILED  "
-  TESTONLYLIBS kokkosalgorithms_gtest ${TEST_LINK_TARGETS}
-  )
+kokkos_add_executable(AlgorithmsUnitTest_StdAlgoCompileOnly SOURCES TestStdAlgorithmsCompileOnly.cpp)

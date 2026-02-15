@@ -1,13 +1,6 @@
+if(NOT Kokkos_INSTALL_TESTING)
+  add_subdirectory(src)
+endif()
 
-
-TRIBITS_SUBPACKAGE(Core)
-
-IF(KOKKOS_HAS_TRILINOS)
-  ADD_SUBDIRECTORY(src)
-ENDIF()
-
-TRIBITS_ADD_TEST_DIRECTORIES(unit_test)
-TRIBITS_ADD_TEST_DIRECTORIES(perf_test)
-
-TRIBITS_SUBPACKAGE_POSTPROCESS()
-
+kokkos_add_test_directories(unit_test)
+kokkos_add_benchmark_directories(perf_test)
