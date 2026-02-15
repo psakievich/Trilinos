@@ -1,0 +1,36 @@
+if(MAGMA_LIBRARY_DIRS AND MAGMA_LIBRARIES)
+  kokkoskernels_find_imported(MAGMA INTERFACE LIBRARIES ${MAGMA_LIBRARIES} LIBRARY_PATHS ${MAGMA_LIBRARY_DIRS})
+elseif(MAGMA_LIBRARIES)
+  kokkoskernels_find_imported(MAGMA INTERFACE LIBRARIES ${MAGMA_LIBRARIES})
+elseif(MAGMA_LIBRARY_DIRS)
+  kokkoskernels_find_imported(MAGMA INTERFACE LIBRARIES amath ${MAGMA_LIB} LIBRARY_PATHS ${MAGMA_LIBRARY_DIRS})
+elseif(KokkosKernels_MAGMA_ROOT OR DEFINED ENV{MAGMA_DIR})
+  if(KokkosKernels_MAGMA_ROOT AND DEFINED ENV{MAGMA_DIR})
+    message(FATAL_ERROR "Both KokkosKernels_MAGMA_ROOT and ENV{MAGMA_DIR} are defined!")
+  endif()
+
+  if(KokkosKernels_MAGMA_ROOT)
+    set(MAGMA_ROOT ${KokkosKernels_MAGMA_ROOT})
+  else()
+    set(MAGMA_ROOT $ENV{MAGMA_DIR})
+  endif()
+
+  kokkoskernels_find_imported(MAGMA INTERFACE
+    LIBRARIES     magma magma_sparse
+    LIBRARY_PATHS ${MAGMA_ROOT}/lib
+    HEADERS       magmablas.h
+    HEADER_PATHS  ${MAGMA_ROOT}/include)
+else()
+  find_package(MAGMA REQUIRED)
+  kokkoskernels_create_imported_tpl(MAGMA INTERFACE LINK_LIBRARIES ${MAGMA_LIBRARIES})
+endif()
+
+try_compile(
+  KOKKOSKERNELS_TRY_COMPILE_MAGMA ${KOKKOSKERNELS_TOP_BUILD_DIR}/tpl_tests
+  ${KOKKOSKERNELS_TOP_SOURCE_DIR}/cmake/compile_tests/magma.cpp
+  CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${MAGMA_ROOT}/include
+  LINK_LIBRARIES -L${MAGMA_ROOT}/lib -lmagma -lmagma_sparse
+  OUTPUT_VARIABLE KOKKOSKERNELS_TRY_COMPILE_MAGMA_OUT)
+if(NOT KOKKOSKERNELS_TRY_COMPILE_MAGMA)
+  message(FATAL_ERROR "KOKKOSKERNELS_TRY_COMPILE_MAGMA_OUT=${KOKKOSKERNELS_TRY_COMPILE_MAGMA_OUT}")
+endif()

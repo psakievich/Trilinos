@@ -1,47 +1,50 @@
-
-TRIBITS_CONFIGURE_FILE(${PACKAGE_NAME}_config.h)
-
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
-INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+#need these here for now
+kokkos_include_directories(${CMAKE_CURRENT_BINARY_DIR})
+kokkos_include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
 #-----------------------------------------------------------------------------
 
-SET(TRILINOS_INCDIR ${CMAKE_INSTALL_PREFIX}/${${PROJECT_NAME}_INSTALL_INCLUDE_DIR})
+set(KOKKOS_CONTAINERS_SRCS)
+append_glob(KOKKOS_CONTAINERS_SRCS ${CMAKE_CURRENT_SOURCE_DIR}/impl/*.cpp)
+set(KOKKOS_CONTAINER_HEADERS)
+append_glob(KOKKOS_CONTAINERS_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/impl/*.hpp)
+append_glob(KOKKOS_CONTAINERS_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/*.hpp)
 
-if(KOKKOS_LEGACY_TRIBITS)
+set(KOKKOS_CONTAINERS_MODULES
+    Kokkos_Bitset.cppm
+    Kokkos_DualView.cppm
+    Kokkos_DynamicView.cppm
+    Kokkos_DynRankView.cppm
+    Kokkos_DynRankView_Impl.cppm
+    Kokkos_ErrorReporter.cppm
+    Kokkos_Functional.cppm
+    Kokkos_OffsetView.cppm
+    Kokkos_ScatterView.cppm
+    Kokkos_ScatterView_Impl.cppm
+    Kokkos_UnorderedMap.cppm
+    Kokkos_UnorderedMap_Impl.cppm
+)
 
-  SET(HEADERS "")
-  SET(SOURCES "")
+install(
+  DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/"
+  DESTINATION ${KOKKOS_HEADER_DIR}
+  FILES_MATCHING
+  PATTERN "*.hpp"
+)
 
-  SET(HEADERS_IMPL "")
+kokkos_add_library(
+  kokkoscontainers
+  SOURCES
+  ${KOKKOS_CONTAINERS_SRCS}
+  HEADERS
+  ${KOKKOS_CONTAINERS_HEADERS}
+  MODULE_INTERFACE
+  ${KOKKOS_CONTAINERS_MODULES}
+)
 
-  FILE(GLOB HEADERS *.hpp)
-  FILE(GLOB HEADERS_IMPL impl/*.hpp)
-  FILE(GLOB SOURCES impl/*.cpp)
+kokkos_lib_include_directories(
+  kokkoscontainers ${KOKKOS_TOP_BUILD_DIR} ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR}
+)
+kokkos_link_internal_library(kokkoscontainers kokkoscore)
 
-  INSTALL(FILES ${HEADERS_IMPL} DESTINATION ${TRILINOS_INCDIR}/impl/)
-
-  TRIBITS_ADD_LIBRARY(
-      kokkoscontainers
-      HEADERS ${HEADERS}
-      NOINSTALLHEADERS ${HEADERS_IMPL}
-      SOURCES ${SOURCES}
-      DEPLIBS
-      )
-
-else()
-
-  INSTALL (
-      DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/"
-      DESTINATION ${TRILINOS_INCDIR}
-      FILES_MATCHING PATTERN "*.hpp"
-      )
-
-  TRIBITS_ADD_LIBRARY(
-      kokkoscontainers
-      SOURCES ${KOKKOS_CONTAINERS_SRCS}
-      DEPLIBS
-      )
-
-endif()
 #-----------------------------------------------------------------------------

@@ -1,20 +1,14 @@
-
-
-# Subpackage name must match what appears in kokkos/cmake/Dependencies.cmake
-#
-TRIBITS_SUBPACKAGE(Example)
-
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(query_device)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(fixture)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(feint)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(fenl)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(multi_fem)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(md_skeleton)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(global_2_local_ids)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(grow_array)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(sort_array)
-if(NOT Kokkos_ENABLE_Cuda)
-TRIBITS_ADD_EXAMPLE_DIRECTORIES(tutorial)
+kokkos_add_example_directories(query_device)
+if(NOT Kokkos_ENABLE_SYCL AND (NOT Kokkos_ENABLE_CUDA OR Kokkos_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE)
+   AND (NOT Kokkos_ENABLE_HIP OR Kokkos_ENABLE_HIP_RELOCATABLE_DEVICE_CODE)
+)
+  kokkos_add_example_directories(virtual_functions)
 endif()
-TRIBITS_SUBPACKAGE_POSTPROCESS()
-
+if(_DEVICE_PARALLEL STREQUAL "NoTypeDefined"
+   OR KOKKOS_ENABLE_CUDA_RELOCATABLE_DEVICE_CODE
+   OR KOKKOS_ENABLE_HIP_RELOCATABLE_DEVICE_CODE
+   OR KOKKOS_ENABLE_SYCL_RELOCATABLE_DEVICE_CODE
+)
+  kokkos_add_example_directories(relocatable_function)
+endif()
+kokkos_add_example_directories(tutorial)
